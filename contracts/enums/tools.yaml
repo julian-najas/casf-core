@@ -1,0 +1,6 @@
+cliniccloud.create_appointment
+cliniccloud.cancel_appointment
+cliniccloud.list_appointments
+cliniccloud.summary_history
+twilio.send_sms
+stripe.generate_invoice

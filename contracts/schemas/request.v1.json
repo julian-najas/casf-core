@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CASF Verify Request v1",
+  "type": "object",
+  "required": ["request_id", "tool", "mode", "role", "subject", "args", "context"],
+  "properties": {
+    "request_id": { "type": "string" },
+    "tool": {
+      "type": "string",
+      "enum": [
+        "cliniccloud.create_appointment",
+        "cliniccloud.cancel_appointment",
+        "cliniccloud.list_appointments",
+        "cliniccloud.summary_history",
+        "twilio.send_sms",
+        "stripe.generate_invoice"
+      ]
+    },
+    "mode": { "type": "string", "enum": ["ALLOW", "STEP_UP", "READ_ONLY", "KILL_SWITCH"] },
+    "role": { "type": "string", "enum": ["receptionist", "nurse", "doctor", "billing", "custodian", "system"] },
+    "subject": {
+      "type": "object",
+      "required": ["patient_id"],
+      "properties": { "patient_id": { "type": "string" } }
+    },
+    "args": { "type": "object" },
+    "context": {
+      "type": "object",
+      "required": ["timestamp", "source"],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "source": { "type": "string" },
+        "session_id": { "type": "string" },
+        "ip": { "type": "string" }
+      }
+    }
+  }
+}

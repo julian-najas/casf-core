@@ -1,0 +1,4 @@
+ALLOW: normal_operations
+STEP_UP: additional_human_confirmation_required
+READ_ONLY: no_writes_allowed
+KILL_SWITCH: all_automation_disabled

@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CASF Audit Event v1",
+  "type": "object",
+  "required": ["event_id", "request_id", "tool", "decision", "timestamp", "hash_prev", "hash_self", "payload_json"],
+  "properties": {
+    "event_id": { "type": "string" },
+    "request_id": { "type": "string" },
+    "tool": { "type": "string" },
+    "decision": { "type": "string" },
+    "mode": { "type": "string" },
+    "role": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "violations": { "type": "array", "items": { "type": "string" } },
+    "hash_prev": { "type": "string" },
+    "hash_self": { "type": "string" },
+    "payload_json": { "type": "string" }
+  }
+}
