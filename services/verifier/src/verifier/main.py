@@ -31,6 +31,10 @@ def verify(req: VerifyRequestV1):
     if res.violations == ["BadRequest_MissingPatientId"]:
         raise HTTPException(status_code=400, detail=res.reason)
 
+    # Disable audit in tests if flag is set
+    if os.getenv("CASF_DISABLE_AUDIT") == "1":
+        return res
+
     # Always audit (append-only + hash chain)
     try:
         append_audit_event(get_pg_dsn(), req, res)
