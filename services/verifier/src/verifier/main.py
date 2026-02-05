@@ -5,15 +5,15 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
+
 from .audit import append_audit_event
 from .models import VerifyRequestV1, VerifyResponseV1
 from .rules import apply_rules_v0
+from .settings import PG_DSN, REDIS_URL
+from .rate_limiter import RateLimiter
 
-def get_pg_dsn() -> str:
-    dsn = os.getenv("PG_DSN")
-    if not dsn:
-        raise RuntimeError("PG_DSN env var is required")
-    return dsn
+
+rl = RateLimiter(REDIS_URL)
 
 app = FastAPI(title="CASF Verifier", version="0.1")
 
@@ -23,9 +23,8 @@ def health():
     return {"status": "ok"}
 
 @app.post("/verify", response_model=VerifyResponseV1)
-def verify(req: VerifyRequestV1):
     # Apply deterministic rules
-    res = apply_rules_v0(req)
+    res = apply_rules_v0(req, rl=rl)
 
     # If we DENY due to missing patient_id, return 400 (schema-level failure)
     if res.violations == ["BadRequest_MissingPatientId"]:
@@ -37,7 +36,7 @@ def verify(req: VerifyRequestV1):
 
     # Always audit (append-only + hash chain)
     try:
-        append_audit_event(get_pg_dsn(), req, res)
+        append_audit_event(PG_DSN, req, res)
     except Exception as e:
         # Audit failure policy v0:
         # - do NOT block the response (we'll tighten later with mode latching / fail-closed writes)

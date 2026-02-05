@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import List, Tuple
 
+from typing import List, Tuple, Optional
 from .models import VerifyRequestV1, VerifyResponseV1
+from .rate_limiter import RateLimiter
 
 WRITE_TOOLS = {
     "cliniccloud.create_appointment",
@@ -19,7 +20,7 @@ READ_ONLY_ALLOWED = {
 def is_write_tool(tool: str) -> bool:
     return tool in WRITE_TOOLS
 
-def apply_rules_v0(req: VerifyRequestV1) -> VerifyResponseV1:
+def apply_rules_v0(req: VerifyRequestV1, rl: Optional[RateLimiter] = None) -> VerifyResponseV1:
     # Hard requirement: traceability
     patient_id = req.subject.get("patient_id")
     if not patient_id:
@@ -48,7 +49,35 @@ def apply_rules_v0(req: VerifyRequestV1) -> VerifyResponseV1:
             reason="OK (READ_ONLY degraded output)",
         )
 
-    # Everything else allowed in v0 (we tighten later with Redis + OPA)
+    # SMS rate limit (v1): max 1 SMS / patient / hour
+    if req.tool == "twilio.send_sms":
+        if rl is None:
+            return VerifyResponseV1(
+                decision="DENY",
+                violations=["FAIL_CLOSED"],
+                allowed_outputs=[],
+                reason="Rate limiter not available",
+            )
+        key = f"sms:{req.subject['patient_id']}"
+        try:
+            res_rl = rl.check(key=key, limit=1, window_s=3600)
+        except Exception:
+            # Redis failure -> FAIL CLOSED for write
+            return VerifyResponseV1(
+                decision="DENY",
+                violations=["FAIL_CLOSED", "Inv_NoSmsBurst"],
+                allowed_outputs=[],
+                reason="Rate limiter unavailable (fail-closed)",
+            )
+        if not res_rl.allowed:
+            return VerifyResponseV1(
+                decision="DENY",
+                violations=["Inv_NoSmsBurst"],
+                allowed_outputs=[],
+                reason="SMS rate limit exceeded",
+            )
+
+    # Everything else allowed en v0/v1
     return VerifyResponseV1(
         decision="ALLOW",
         violations=[],

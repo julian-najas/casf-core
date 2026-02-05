@@ -1,3 +1,7 @@
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
 version: '3.8'
 services:
   postgres:
@@ -15,7 +19,9 @@ services:
     build: ../../services/verifier
     environment:
       PG_DSN: "dbname=casf user=casf password=casf host=postgres port=5432"
+      REDIS_URL: "redis://redis:6379/0"
     depends_on:
       - postgres
+      - redis
     ports:
       - "8088:8000"
