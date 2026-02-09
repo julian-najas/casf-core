@@ -37,7 +37,7 @@ class AuditEventV1(BaseModel):
     ts: str
     actor: str
     action: str
-    decision: str
+    decision: Decision
     payload: dict[str, Any]
     prev_hash: str
     hash: str

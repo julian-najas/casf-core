@@ -161,7 +161,7 @@ def append_audit_event(
                     evt.action,
                     evt.decision,
                     _canonical_json(evt.payload),
-                    evt.prev_hash or None,  # NULL for genesis
+                    evt.prev_hash,  # "" for genesis (matches contract & compute_hash)
                     evt.hash,
                 ),
             )

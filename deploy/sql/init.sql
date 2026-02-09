@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
   payload    JSONB NOT NULL,
 
-  prev_hash  TEXT,
+  prev_hash  TEXT NOT NULL DEFAULT '',
   hash       TEXT NOT NULL,
 
   CONSTRAINT uq_audit_event_id UNIQUE (event_id),
