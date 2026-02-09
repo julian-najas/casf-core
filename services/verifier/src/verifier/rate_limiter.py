@@ -12,11 +12,16 @@ end
 return current
 """
 
+# Anti-replay: SET NX EX — returns 1 if key was NEW, 0 if already seen
+REPLAY_TTL_S = 86400  # 24 hours
+
+
 @dataclass(frozen=True)
 class RateLimitResult:
     allowed: bool
     count: int
     reason: str
+
 
 class RateLimiter:
     def __init__(self, redis_url: str, timeout_s: float = 0.2):
@@ -32,3 +37,13 @@ class RateLimiter:
         if count <= limit:
             return RateLimitResult(True, count, "ok")
         return RateLimitResult(False, count, "limit_exceeded")
+
+    def check_replay(self, request_id: str, ttl_s: int = REPLAY_TTL_S) -> bool:
+        """
+        Anti-replay gate.  Returns True if this request_id is NEW (first-seen).
+        Returns False if it was already processed (replay).
+        Uses SET NX EX — atomic, single round-trip.
+        Raises on Redis failure (caller decides fail-closed behaviour).
+        """
+        key = f"replay:{request_id}"
+        return bool(self._r.set(key, "1", nx=True, ex=ttl_s))

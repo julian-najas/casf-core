@@ -12,7 +12,7 @@ from .audit import append_audit_event
 from .models import VerifyRequestV1, VerifyResponseV1
 from .opa_client import OpaClient
 from .rate_limiter import RateLimiter
-from .rules import apply_rules_v0
+from .rules import WRITE_TOOLS, apply_rules_v0
 from .settings import OPA_URL, PG_DSN, REDIS_URL
 
 rl = RateLimiter(REDIS_URL)
@@ -77,6 +77,27 @@ def healthz():
 
 @app.post("/verify", response_model=VerifyResponseV1)
 def verify(req: VerifyRequestV1):
+    # ── Anti-replay gate (must be FIRST) ─────────────────
+    # Same request_id twice within 24h → DENY.
+    # Redis failure → FAIL_CLOSED on writes, pass-through on reads.
+    try:
+        is_new = rl.check_replay(req.request_id)
+    except Exception:
+        if req.tool in WRITE_TOOLS:
+            return VerifyResponseV1(
+                decision="DENY",
+                violations=["FAIL_CLOSED", "Inv_ReplayCheckUnavailable"],
+                allowed_outputs=[],
+                reason="Replay check unavailable (fail-closed on write)",
+            )
+        is_new = True  # fail-open for reads
+
+    if not is_new:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Replay detected: request_id {req.request_id} already processed",
+        )
+
     # Apply deterministic rules
     res = apply_rules_v0(req, rl=rl)
 
@@ -101,12 +122,6 @@ def verify(req: VerifyRequestV1):
         "subject": req.subject,
         "args": req.args,
         "context": req.context,
-    }
-    WRITE_TOOLS = {
-        "cliniccloud.create_appointment",
-        "cliniccloud.cancel_appointment",
-        "stripe.generate_invoice",
-        "twilio.send_sms",
     }
     is_write = req.tool in WRITE_TOOLS
     try:

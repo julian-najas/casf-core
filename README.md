@@ -60,11 +60,35 @@ Verifier listens on port **8000** (container) → **8088** (host).
 - Redis unavailable → **FAIL_CLOSED** (DENY for all writes)
 - Other tools are not rate-limited in v1
 
+## Anti-replay
+
+Every `request_id` is tracked via Redis `SET NX EX` (24 h TTL).
+A repeated `request_id` within the window returns **409 Conflict**.
+
+- Redis unavailable → **FAIL_CLOSED** for writes, pass-through for reads
+- Clients must generate a new `request_id` per logical request
+
+## Audit digest (anchor-ready)
+
+```bash
+# Export yesterday's audit digest (requires PG_DSN)
+python -m verifier.export_audit_digest            # → stdout JSON
+python -m verifier.export_audit_digest 2026-02-09  # specific date
+
+# Sign and store in WORM / SIEM / S3 Object Lock
+python -m verifier.export_audit_digest | gpg --clearsign > digest.asc
+```
+
+The digest contains `first_hash`, `last_hash`, `event_count`, `chain_valid`
+and a `digest_hash` (SHA-256 of the canonical digest payload).
+
 ## Guarantees
 
 - Deny-by-default policy enforcement (OPA)
 - Fail-closed on write operations when dependencies are unavailable
+- Anti-replay: duplicate `request_id` rejected (409) within 24 h window
 - Append-only audit log with SHA-256 hash chain (tamper-evident)
+- Anchor-ready digest export for WORM / SIEM verification
 - Advisory lock serialisation for concurrent audit writes
 - Semantic healthchecks (Postgres SELECT 1, Redis PING, OPA policy eval)
 
