@@ -1,19 +1,19 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "CASF Audit Event v1",
+  "description": "Append-only audit event with hash chain. Matches DDL (deploy/sql/init.sql) and AuditEventV1 (models.py).",
   "type": "object",
-  "required": ["event_id", "request_id", "tool", "decision", "timestamp", "hash_prev", "hash_self", "payload_json"],
+  "required": ["event_id", "request_id", "ts", "actor", "action", "decision", "payload", "prev_hash", "hash"],
   "properties": {
-    "event_id": { "type": "string" },
-    "request_id": { "type": "string" },
-    "tool": { "type": "string" },
-    "decision": { "type": "string" },
-    "mode": { "type": "string" },
-    "role": { "type": "string" },
-    "timestamp": { "type": "string", "format": "date-time" },
-    "violations": { "type": "array", "items": { "type": "string" } },
-    "hash_prev": { "type": "string" },
-    "hash_self": { "type": "string" },
-    "payload_json": { "type": "string" }
-  }
+    "event_id":   { "type": "string", "format": "uuid" },
+    "request_id": { "type": "string", "format": "uuid" },
+    "ts":         { "type": "string", "format": "date-time", "description": "ISO-8601 UTC, Z suffix" },
+    "actor":      { "type": "string", "description": "role:<role> of the requester" },
+    "action":     { "type": "string", "description": "tool name (e.g. twilio.send_sms)" },
+    "decision":   { "type": "string", "enum": ["ALLOW", "DENY", "NEEDS_APPROVAL"] },
+    "payload":    { "type": "object", "description": "{ request: {...}, response: {...} }" },
+    "prev_hash":  { "type": "string", "description": "SHA-256 hex of previous event, empty string for genesis" },
+    "hash":       { "type": "string", "description": "SHA-256 hex: sha256(request_id+event_id+ts+actor+action+decision+canonical_json(payload)+prev_hash)" }
+  },
+  "additionalProperties": false
 }

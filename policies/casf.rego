@@ -8,9 +8,12 @@ default allow = false
 
 is_kill_switch { input.mode == "KILL_SWITCH" }
 is_read_only   { input.mode == "READ_ONLY" }
-is_normal      { input.mode == "NORMAL" }
+is_normal      { input.mode == "ALLOW" }
 
 has_tenant { input.context.tenant_id != "" }
+
+known_roles := {"receptionist", "nurse", "doctor", "billing", "custodian", "system"}
+is_known_role { known_roles[input.role] }
 
 # Utility
 deny_with(v) {
@@ -22,40 +25,46 @@ deny_with(v) {
 
 allow {
   has_tenant
+  is_known_role
   input.tool == "cliniccloud.list_appointments"
   not is_kill_switch
 }
 
 allow {
   has_tenant
+  is_known_role
   input.tool == "cliniccloud.summary_history"
   not is_kill_switch
   input.subject.patient_id != ""
 }
 
-# WRITE tools denied in READ_ONLY and KILL_SWITCH, allowed in NORMAL (OPA layer only;
+# WRITE tools denied in READ_ONLY and KILL_SWITCH, allowed in ALLOW mode (OPA layer only;
 # Redis limiter still enforced separately for twilio.send_sms).
 
 allow {
   has_tenant
+  is_known_role
   input.tool == "cliniccloud.create_appointment"
   is_normal
 }
 
 allow {
   has_tenant
+  is_known_role
   input.tool == "cliniccloud.cancel_appointment"
   is_normal
 }
 
 allow {
   has_tenant
+  is_known_role
   input.tool == "stripe.generate_invoice"
   is_normal
 }
 
 allow {
   has_tenant
+  is_known_role
   input.tool == "twilio.send_sms"
   is_normal
   input.subject.patient_id != ""
@@ -98,4 +107,9 @@ violations[v] {
   input.tool == "twilio.send_sms"
   input.subject.patient_id == ""
   v := "BadRequest_MissingPatientId"
+}
+
+violations[v] {
+  not is_known_role
+  v := "BadRequest_UnknownRole"
 }
