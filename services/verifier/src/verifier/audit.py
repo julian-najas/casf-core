@@ -4,82 +4,171 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Tuple
+from typing import Optional
 
 import psycopg2
 
 from .models import AuditEventV1, VerifyRequestV1, VerifyResponseV1
 
+
+# ── Helpers ──────────────────────────────────────────────
+
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    """ISO-8601 UTC timestamp, always with 'Z' suffix (no +00:00 ambiguity)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
 
 def _canonical_json(obj) -> str:
-    # Stable canonicalization for hashing
+    """Stable JSON: sorted keys, compact separators, UTF-8."""
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
 
 def _sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
+
+# ── Hash contract ────────────────────────────────────────
+
+def compute_hash(
+    request_id: str,
+    event_id: str,
+    ts: str,
+    actor: str,
+    action: str,
+    decision: str,
+    payload: dict,
+    prev_hash: str,
+) -> str:
+    """
+    Deterministic hash contract (rigid, ordered):
+        sha256(request_id + event_id + ts + actor + action + decision
+               + canonical_json(payload) + prev_hash)
+    All fields concatenated as plain strings.  prev_hash is "" for genesis.
+    """
+    parts = [
+        request_id,
+        event_id,
+        ts,
+        actor,
+        action,
+        decision,
+        _canonical_json(payload),
+        prev_hash,
+    ]
+    return _sha256_hex("".join(parts))
+
+
+def verify_chain(events: list[AuditEventV1]) -> tuple[bool, Optional[int]]:
+    """
+    Walk a list of events (ordered by id ASC) and verify the hash chain.
+    Returns (True, None) if valid, or (False, broken_index).
+    """
+    for i, evt in enumerate(events):
+        expected_prev = events[i - 1].hash if i > 0 else ""
+        if evt.prev_hash != expected_prev:
+            return False, i
+        expected_hash = compute_hash(
+            request_id=evt.request_id,
+            event_id=evt.event_id,
+            ts=evt.ts,
+            actor=evt.actor,
+            action=evt.action,
+            decision=evt.decision,
+            payload=evt.payload,
+            prev_hash=evt.prev_hash,
+        )
+        if evt.hash != expected_hash:
+            return False, i
+    return True, None
+
+
+# ── Persistence ──────────────────────────────────────────
+
 def _get_prev_hash(conn) -> str:
+    """Fetch the hash of the last event (inside the same transaction / lock)."""
     with conn.cursor() as cur:
-        cur.execute("SELECT hash_self FROM audit_events ORDER BY id DESC LIMIT 1;")
+        cur.execute("SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1;")
         row = cur.fetchone()
         return row[0] if row else ""
 
-def append_audit_event(pg_dsn: str, req: VerifyRequestV1, res: VerifyResponseV1) -> AuditEventV1:
+
+def append_audit_event(
+    pg_dsn: str,
+    req: VerifyRequestV1,
+    res: VerifyResponseV1,
+) -> AuditEventV1:
     """
-    Append-only audit event with hash chain:
-      hash_self = sha256(hash_prev + payload_json)
+    Append-only audit event with hash chain.
+    Uses a Postgres advisory lock to serialise writers and guarantee
+    prev_hash consistency under concurrency.
     """
     event_id = str(uuid.uuid4())
     ts = _utc_now_iso()
+    actor = f"role:{req.role}"
+    action = req.tool
 
     payload = {
-        "event_id": event_id,
-        "timestamp": ts,
         "request": req.model_dump(),
         "response": res.model_dump(),
     }
-    payload_json = _canonical_json(payload)
 
     conn = psycopg2.connect(pg_dsn)
     try:
-        prev = _get_prev_hash(conn)
-        h_self = _sha256_hex(prev + payload_json)
+        conn.autocommit = False
+
+        with conn.cursor() as cur:
+            # Advisory lock (xact-scoped, key = fixed int 42).
+            # Serialises all audit writers; released on COMMIT/ROLLBACK.
+            cur.execute("SELECT pg_advisory_xact_lock(42);")
+
+        prev_hash = _get_prev_hash(conn)
+        h = compute_hash(
+            request_id=req.request_id,
+            event_id=event_id,
+            ts=ts,
+            actor=actor,
+            action=action,
+            decision=res.decision,
+            payload=payload,
+            prev_hash=prev_hash,
+        )
 
         evt = AuditEventV1(
             event_id=event_id,
             request_id=req.request_id,
-            tool=req.tool,
+            ts=ts,
+            actor=actor,
+            action=action,
             decision=res.decision,
-            timestamp=ts,
-            mode=req.mode,
-            role=req.role,
-            violations=res.violations,
-            hash_prev=prev,
-            hash_self=h_self,
-            payload_json=payload_json,
+            payload=payload,
+            prev_hash=prev_hash,
+            hash=h,
         )
 
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO audit_events
-                  (event_id, request_id, tool, decision, hash_prev, hash_self, payload_json)
+                  (request_id, event_id, ts, actor, action, decision,
+                   payload, prev_hash, hash)
                 VALUES
-                  (%s, %s, %s, %s, %s, %s, %s);
+                  (%s::uuid, %s::uuid, %s, %s, %s, %s,
+                   %s::jsonb, %s, %s);
                 """,
                 (
-                    evt.event_id,
                     evt.request_id,
-                    evt.tool,
+                    evt.event_id,
+                    evt.ts,
+                    evt.actor,
+                    evt.action,
                     evt.decision,
-                    evt.hash_prev,
-                    evt.hash_self,
-                    evt.payload_json,
+                    _canonical_json(evt.payload),
+                    evt.prev_hash or None,  # NULL for genesis
+                    evt.hash,
                 ),
             )
         conn.commit()
         return evt
-    finally:
-        conn.close()
+    except Exception:
+        conn.rollback()
+        raise

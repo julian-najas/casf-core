@@ -33,12 +33,10 @@ class VerifyResponseV1(BaseModel):
 class AuditEventV1(BaseModel):
     event_id: str
     request_id: str
-    tool: str
+    ts: str
+    actor: str
+    action: str
     decision: str
-    timestamp: str
-    mode: Optional[str] = None
-    role: Optional[str] = None
-    violations: List[str] = []
-    hash_prev: str
-    hash_self: str
-    payload_json: str
+    payload: Dict[str, Any]
+    prev_hash: str
+    hash: str

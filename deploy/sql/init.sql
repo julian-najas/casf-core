@@ -1,13 +1,25 @@
 CREATE TABLE IF NOT EXISTS audit_events (
   id BIGSERIAL PRIMARY KEY,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  event_id TEXT NOT NULL,
-  request_id TEXT NOT NULL,
-  tool TEXT NOT NULL,
-  decision TEXT NOT NULL,
-  hash_prev TEXT NOT NULL,
-  hash_self TEXT NOT NULL,
-  payload_json TEXT NOT NULL
+
+  request_id UUID NOT NULL,
+  event_id   UUID NOT NULL,
+  ts         TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  actor      TEXT NOT NULL,
+  action     TEXT NOT NULL,
+  decision   TEXT NOT NULL,
+
+  payload    JSONB NOT NULL,
+
+  prev_hash  TEXT,
+  hash       TEXT NOT NULL,
+
+  CONSTRAINT uq_audit_event_id UNIQUE (event_id),
+  CONSTRAINT uq_audit_hash UNIQUE (hash)
 );
 
-CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_events (request_id);
+CREATE INDEX IF NOT EXISTS idx_audit_request_ts
+  ON audit_events (request_id, ts);
+
+CREATE INDEX IF NOT EXISTS idx_audit_ts
+  ON audit_events (ts);

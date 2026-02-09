@@ -2,9 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 COPY pyproject.toml /app/pyproject.toml
+COPY src /app/src
 RUN pip install --no-cache-dir -U pip && pip install --no-cache-dir .
 
-COPY src /app/src
 ENV PYTHONPATH=/app/src
 
 EXPOSE 8000

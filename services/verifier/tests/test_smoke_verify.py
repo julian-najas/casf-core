@@ -1,9 +1,13 @@
 from fastapi.testclient import TestClient
-from verifier.main import app
+import os
+import uuid
+os.environ["PG_DSN"] = "postgresql://user:pass@localhost/db"
+os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+from src.verifier.main import app
 
 client = TestClient(app)
 
-BASE_CTX = {"timestamp": "2026-02-05T10:00:00Z", "source": "agent"}
+BASE_CTX = {"timestamp": "2026-02-05T10:00:00Z", "source": "agent", "tenant_id": "tenant_1"}
 
 def test_health_ok():
     r = client.get("/health")
@@ -12,7 +16,7 @@ def test_health_ok():
 
 def test_read_only_denies_write():
     payload = {
-        "request_id": "t1",
+        "request_id": str(uuid.uuid4()),
         "tool": "cliniccloud.create_appointment",
         "mode": "READ_ONLY",
         "role": "receptionist",
@@ -24,11 +28,11 @@ def test_read_only_denies_write():
     assert r.status_code == 200
     body = r.json()
     assert body["decision"] == "DENY"
-    assert "Inv_NoWriteSafe" in body["violations"]
+    assert "Mode_ReadOnly_NoWrite" in body["violations"]
 
 def test_read_only_allows_list_appointments_aggregated():
     payload = {
-        "request_id": "t2",
+        "request_id": str(uuid.uuid4()),
         "tool": "cliniccloud.list_appointments",
         "mode": "READ_ONLY",
         "role": "receptionist",

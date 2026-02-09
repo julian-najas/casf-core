@@ -52,3 +52,18 @@ docker compose down
 - No policy latching
 - No business-level authorization logic
 - No SLA or high-availability guarantees
+
+## Release status
+
+**CASF-core is scope-frozen.**
+
+This repository is considered feature-complete for its intended role as a
+zero-trust execution gateway.
+
+No new features will be accepted. Only:
+- critical bug fixes
+- security patches
+- documentation corrections
+
+Any extension (modes latching, alerting, reporting, orchestration)
+belongs to a separate project or layer.

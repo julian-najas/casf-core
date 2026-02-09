@@ -54,7 +54,7 @@ def apply_rules_v0(req: VerifyRequestV1, rl: Optional[RateLimiter] = None) -> Ve
         if rl is None:
             return VerifyResponseV1(
                 decision="DENY",
-                violations=["FAIL_CLOSED"],
+                violations=["FAIL_CLOSED", "Inv_NoSmsBurst"],
                 allowed_outputs=[],
                 reason="Rate limiter not available",
             )
