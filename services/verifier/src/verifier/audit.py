@@ -3,19 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import psycopg2
 
 from .models import AuditEventV1, VerifyRequestV1, VerifyResponseV1
 
-
 # ── Helpers ──────────────────────────────────────────────
 
 def _utc_now_iso() -> str:
     """ISO-8601 UTC timestamp, always with 'Z' suffix (no +00:00 ambiguity)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _canonical_json(obj) -> str:
@@ -58,7 +56,7 @@ def compute_hash(
     return _sha256_hex("".join(parts))
 
 
-def verify_chain(events: list[AuditEventV1]) -> tuple[bool, Optional[int]]:
+def verify_chain(events: list[AuditEventV1]) -> tuple[bool, int | None]:
     """
     Walk a list of events (ordered by id ASC) and verify the hash chain.
     Returns (True, None) if valid, or (False, broken_index).

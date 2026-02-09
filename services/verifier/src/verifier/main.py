@@ -8,15 +8,12 @@ import redis as redis_lib
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
-
 from .audit import append_audit_event
 from .models import VerifyRequestV1, VerifyResponseV1
-from .rules import apply_rules_v0
-from .settings import PG_DSN, REDIS_URL, OPA_URL
 from .opa_client import OpaClient
 from .rate_limiter import RateLimiter
-
-
+from .rules import apply_rules_v0
+from .settings import OPA_URL, PG_DSN, REDIS_URL
 
 rl = RateLimiter(REDIS_URL)
 opa = OpaClient(OPA_URL)
@@ -51,7 +48,7 @@ def healthz():
             conn.close()
         checks["postgres"] = "ok"
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"postgres: {e}")
+        raise HTTPException(status_code=503, detail=f"postgres: {e}") from None
 
     # ── Redis ──
     try:
@@ -60,7 +57,7 @@ def healthz():
         r.close()
         checks["redis"] = "ok"
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"redis: {e}")
+        raise HTTPException(status_code=503, detail=f"redis: {e}") from None
 
     # ── OPA (policy evaluable, not just /health) ──
     try:
@@ -72,7 +69,7 @@ def healthz():
             resp.raise_for_status()
         checks["opa"] = "ok"
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"opa: {e}")
+        raise HTTPException(status_code=503, detail=f"opa: {e}") from None
 
     return {"status": "ok", "checks": checks}
 
@@ -141,7 +138,7 @@ def verify(req: VerifyRequestV1):
     # Always audit (append-only + hash chain)
     try:
         append_audit_event(PG_DSN, req, res)
-    except Exception as e:
+    except Exception:
         # Audit failure policy v0:
         # - do NOT block the response (we'll tighten later with mode latching / fail-closed writes)
         # - but surface a hard signal in headers/body is avoided in v0 to keep UX stable

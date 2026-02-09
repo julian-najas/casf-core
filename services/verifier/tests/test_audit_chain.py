@@ -14,7 +14,6 @@ from src.verifier.audit import (
     append_audit_event,
     compute_hash,
     verify_chain,
-    _canonical_json,
 )
 from src.verifier.models import (
     AuditEventV1,
@@ -33,9 +32,8 @@ def _clean_audit_table():
     """Truncate audit_events so each test starts with a clean chain."""
     conn = psycopg2.connect(PG_DSN)
     try:
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute("TRUNCATE audit_events RESTART IDENTITY;")
+        with conn, conn.cursor() as cur:
+            cur.execute("TRUNCATE audit_events RESTART IDENTITY;")
     finally:
         conn.close()
 
@@ -152,7 +150,7 @@ def test_chain_two_events_linked():
 
 def test_verify_chain_valid():
     evts = []
-    for i in range(3):
+    for _i in range(3):
         req = _mk_req()
         res = _mk_res()
         evts.append(append_audit_event(PG_DSN, req, res))
@@ -248,10 +246,9 @@ def test_duplicate_event_id_rejected():
     # Try to insert a row with the same event_id manually
     conn = psycopg2.connect(PG_DSN)
     try:
-        with conn.cursor() as cur:
-            with pytest.raises(psycopg2.errors.UniqueViolation):
-                cur.execute(
-                    """
+        with conn.cursor() as cur, pytest.raises(psycopg2.errors.UniqueViolation):
+            cur.execute(
+                """
                     INSERT INTO audit_events
                       (request_id, event_id, ts, actor, action, decision,
                        payload, prev_hash, hash)
@@ -259,7 +256,7 @@ def test_duplicate_event_id_rejected():
                       (%s::uuid, %s::uuid, now(), 'x', 'x', 'x',
                        '{}'::jsonb, NULL, 'unique_hash_abc');
                     """,
-                    (str(uuid.uuid4()), evt.event_id),
-                )
+                (str(uuid.uuid4()), evt.event_id),
+            )
     finally:
         conn.close()

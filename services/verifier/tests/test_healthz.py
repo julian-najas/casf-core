@@ -10,6 +10,7 @@ os.environ.setdefault("OPA_URL", "http://localhost:8181")
 os.environ.setdefault("CASF_DISABLE_AUDIT", "1")
 
 from fastapi.testclient import TestClient
+
 from src.verifier.main import app
 
 client = TestClient(app)

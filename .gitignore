@@ -1,9 +1,46 @@
+# === Python ===
 __pycache__/
-*.pyc
-.venv/
-.env
-.DS_Store
-.pytest_cache/
-coverage.xml
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
 dist/
 build/
+.eggs/
+
+# === Virtual environments ===
+.venv/
+venv/
+ENV/
+.env
+
+# === pytest / coverage ===
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# === mypy ===
+.mypy_cache/
+
+# === ruff ===
+.ruff_cache/
+
+# === IDE / editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Docker ===
+docker-compose.override.yml
+
+# === Misc artifacts ===
+arbol.txt

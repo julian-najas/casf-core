@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/verifier
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Ruff (lint)
+        run: python -m ruff check src/ tests/
+
+      - name: Mypy (type check)
+        run: python -m mypy src/verifier/
+
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/verifier
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: casf
+          POSTGRES_USER: casf
+          POSTGRES_PASSWORD: casf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U casf -d casf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+      opa:
+        image: openpolicyagent/opa:0.63.0
+        ports:
+          - 8181:8181
+        # OPA needs policies mounted; use a sidecar step instead
+        options: >-
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Init Postgres schema
+        run: PGPASSWORD=casf psql -h localhost -U casf -d casf -f ../../deploy/sql/init.sql
+
+      - name: Start OPA with policies
+        run: |
+          docker run -d --name opa-with-policies \
+            --network host \
+            -v ${{ github.workspace }}/policies:/policies:ro \
+            openpolicyagent/opa:0.63.0 \
+            run --server --log-level=info /policies
+          sleep 5
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run pytest
+        env:
+          PG_DSN: "dbname=casf user=casf password=casf host=localhost port=5432"
+          REDIS_URL: "redis://localhost:6379/0"
+          OPA_URL: "http://localhost:8181"
+        run: python -m pytest tests/ -v
+
+      - name: Stop OPA sidecar
+        if: always()
+        run: docker rm -f opa-with-policies || true
+
+  opa-test:
+    name: OPA Policy Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run OPA tests
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/policies:/policies:ro \
+            openpolicyagent/opa:0.63.0 \
+            test /policies -v

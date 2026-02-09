@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 Mode = Literal["ALLOW", "STEP_UP", "READ_ONLY", "KILL_SWITCH"]
@@ -20,15 +21,15 @@ class VerifyRequestV1(BaseModel):
     tool: Tool
     mode: Mode
     role: Role
-    subject: Dict[str, str]
-    args: Dict[str, Any]
-    context: Dict[str, Any]
+    subject: dict[str, str]
+    args: dict[str, Any]
+    context: dict[str, Any]
 
 class VerifyResponseV1(BaseModel):
     decision: Decision
-    violations: List[str] = []
-    allowed_outputs: List[str] = []
-    reason: Optional[str] = None
+    violations: list[str] = []
+    allowed_outputs: list[str] = []
+    reason: str | None = None
 
 class AuditEventV1(BaseModel):
     event_id: str
@@ -37,6 +38,6 @@ class AuditEventV1(BaseModel):
     actor: str
     action: str
     decision: str
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
     prev_hash: str
     hash: str

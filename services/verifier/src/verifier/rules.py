@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-
-from typing import List, Tuple, Optional
 from .models import VerifyRequestV1, VerifyResponseV1
 from .rate_limiter import RateLimiter
 
@@ -20,7 +18,7 @@ READ_ONLY_ALLOWED = {
 def is_write_tool(tool: str) -> bool:
     return tool in WRITE_TOOLS
 
-def apply_rules_v0(req: VerifyRequestV1, rl: Optional[RateLimiter] = None) -> VerifyResponseV1:
+def apply_rules_v0(req: VerifyRequestV1, rl: RateLimiter | None = None) -> VerifyResponseV1:
     # Hard requirement: traceability
     patient_id = req.subject.get("patient_id")
     if not patient_id:

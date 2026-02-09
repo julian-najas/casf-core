@@ -1,8 +1,9 @@
 import uuid
 from types import SimpleNamespace
 
-from src.verifier.rules import apply_rules_v0
 from src.verifier.rate_limiter import RateLimitResult
+from src.verifier.rules import apply_rules_v0
+
 
 def mk_req(*, request_id=None, tool="twilio.send_sms", patient_id="p1"):
     if request_id is None:

@@ -1,57 +1,89 @@
 # casf-core
 
-CASF-core is a Zero-Trust Verification Service for PHI/PII automation.
-It validates intent (tool/role/mode) before any execution and writes an append-only audit trail.
+[![CI](https://github.com/<OWNER>/casf-core/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/casf-core/actions/workflows/ci.yml)
 
-## Quickstart
-docker compose -f deploy/compose/docker-compose.yml up --build
+Zero-trust verification gateway for PHI/PII automation.
+Validates intent (tool / role / mode) before any execution, enforces policy via OPA, applies rate limiting, and writes an append-only hash-chained audit trail.
 
-## Endpoint
-POST http://localhost:8000/verify
+## Architecture
 
-## Rate limiting (Redis)
-
-CASF-core aplica rate limit atómico (Redis Lua + TTL) para herramientas de escritura.
-
-- Regla v1: `twilio.send_sms` → máximo 1 SMS por `subject.patient_id` cada 3600s.
-- Si Redis no está disponible: **FAIL-CLOSED** para `twilio.send_sms` (`DENY` + `FAIL_CLOSED`).
-- Otras herramientas no dependen de Redis en v1.
-
-## Run locally
-
-Requirements:
-- Docker
-- Docker Compose
-
-Start the stack:
-```bash
-docker compose up -d
+```
+  request ──► Verifier ──► OPA (Rego)
+                │
+        ┌───────┼───────┐
+      Redis   Postgres  Audit
+    (rate-limit) (DDL)  (hash-chain)
 ```
 
-Verify:
+| Component | Purpose |
+|-----------|---------|
+| **Verifier** (FastAPI) | Hard invariants, rate limiting, OPA consultation, audit |
+| **OPA** (Rego) | External policy engine — deny-by-default governance |
+| **Redis** | Atomic rate limiting (Lua + TTL), fail-closed on writes |
+| **Postgres** | Append-only audit trail with SHA-256 hash chain |
 
-* Verifier health: `http://localhost:8088/health`
-* OPA: `http://localhost:8181/v1/data/casf`
-
-Stop:
+## Quick start
 
 ```bash
-docker compose down
+# Start the full stack
+docker compose -f deploy/compose/docker-compose.yml up --build -d
+
+# Verify all services are healthy
+docker compose -f deploy/compose/docker-compose.yml ps
+
+# Run tests (from services/verifier with Python 3.11 venv)
+cd services/verifier
+pip install -e ".[dev]"
+pytest -v
+
+# Run OPA policy tests
+docker run --rm -v "$PWD/policies:/policies:ro" \
+  openpolicyagent/opa:0.63.0 test /policies -v
+
+# Smoke test (PowerShell)
+.\deploy\compose\scripts\smoke_pr3.ps1
 ```
 
-## Guarantees / Non-goals
+## Endpoints
 
-### Guarantees
-- Deny-by-default policy enforcement
-- Fail-closed on write operations when dependencies (OPA, Redis, Postgres) are unavailable
-- SMS rate limiting: max 1 message per patient_id per 1 hour
-- Append-only audit log with hash chaining
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/verify` | Decision endpoint — validates and returns ALLOW / DENY / NEEDS_APPROVAL |
+| `GET` | `/health` | Liveness probe (process alive) |
+| `GET` | `/healthz` | Readiness probe (Postgres + Redis + OPA reachable) |
 
-### Non-goals
+Verifier listens on port **8000** (container) → **8088** (host).
+
+## Rate limiting
+
+- `twilio.send_sms` → max **1 SMS per `patient_id` per hour** (Redis Lua atomic)
+- Redis unavailable → **FAIL_CLOSED** (DENY for all writes)
+- Other tools are not rate-limited in v1
+
+## Guarantees
+
+- Deny-by-default policy enforcement (OPA)
+- Fail-closed on write operations when dependencies are unavailable
+- Append-only audit log with SHA-256 hash chain (tamper-evident)
+- Advisory lock serialisation for concurrent audit writes
+- Semantic healthchecks (Postgres SELECT 1, Redis PING, OPA policy eval)
+
+## Non-goals
+
 - No automatic retries or self-healing
 - No policy latching
 - No business-level authorization logic
 - No SLA or high-availability guarantees
+
+## Project structure
+
+```
+contracts/          # JSON schemas + enum definitions (versioned, external)
+policies/           # OPA Rego policies (single source of truth)
+services/verifier/  # Python FastAPI service
+deploy/compose/     # Docker Compose stack + smoke scripts
+deploy/sql/         # Postgres DDL (init.sql)
+```
 
 ## Release status
 
@@ -67,3 +99,7 @@ No new features will be accepted. Only:
 
 Any extension (modes latching, alerting, reporting, orchestration)
 belongs to a separate project or layer.
+
+## License
+
+[Apache-2.0](LICENSE)

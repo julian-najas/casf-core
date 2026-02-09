@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
+
 
 @dataclass(frozen=True)
 class OpaDecision:
@@ -15,7 +16,7 @@ class OpaClient:
         self._url = opa_url.rstrip("/")
         self._timeout = timeout_s
 
-    def evaluate(self, input_doc: Dict[str, Any]) -> OpaDecision:
+    def evaluate(self, input_doc: dict[str, Any]) -> OpaDecision:
         """
         Calls OPA data API:
           POST {OPA_URL}/v1/data/casf
