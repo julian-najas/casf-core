@@ -1,7 +1,6 @@
 package casf
 
 default allow = false
-	# default violations = []
 
 # Expect input fields:
 # input.tool, input.mode, input.role, input.subject, input.context

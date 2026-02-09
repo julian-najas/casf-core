@@ -26,8 +26,9 @@
     "args": { "type": "object" },
     "context": {
       "type": "object",
-      "required": ["timestamp", "source"],
+      "required": ["tenant_id"],
       "properties": {
+        "tenant_id": { "type": "string", "minLength": 1, "description": "Tenant identifier (required by OPA policy)" },
         "timestamp": { "type": "string", "format": "date-time" },
         "source": { "type": "string" },
         "session_id": { "type": "string" },

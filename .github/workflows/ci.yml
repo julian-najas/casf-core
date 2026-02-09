@@ -61,15 +61,9 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
-      opa:
-        image: openpolicyagent/opa:0.63.0
-        ports:
-          - 8181:8181
-        # OPA needs policies mounted; use a sidecar step instead
-        options: >-
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
+      # OPA runs as a sidecar (docker run) instead of a service container
+      # because GH Actions service containers cannot mount volumes.
+      # The sidecar is started in the "Start OPA with policies" step below.
 
     steps:
       - uses: actions/checkout@v4
