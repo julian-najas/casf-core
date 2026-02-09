@@ -1,6 +1,6 @@
 # casf-core
 
-[![CI](https://github.com/<OWNER>/casf-core/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/casf-core/actions/workflows/ci.yml)
+[![CI](https://github.com/julian-najas/casf-core/actions/workflows/ci.yml/badge.svg)](https://github.com/julian-najas/casf-core/actions/workflows/ci.yml)
 
 Zero-trust verification gateway for PHI/PII automation.
 Validates intent (tool / role / mode) before any execution, enforces policy via OPA, applies rate limiting, and writes an append-only hash-chained audit trail.
