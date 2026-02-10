@@ -1,10 +1,12 @@
 import os
 import uuid
 
-from fastapi.testclient import TestClient
-
 os.environ["PG_DSN"] = "postgresql://user:pass@localhost/db"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+os.environ.setdefault("ANTI_REPLAY_ENABLED", "false")
+
+from fastapi.testclient import TestClient
+
 from src.verifier.main import app
 
 client = TestClient(app)

@@ -94,16 +94,21 @@ def append_audit_event(
     pg_dsn: str,
     req: VerifyRequestV1,
     res: VerifyResponseV1,
+    *,
+    action_override: str | None = None,
 ) -> AuditEventV1:
     """
     Append-only audit event with hash chain.
     Uses a Postgres advisory lock to serialise writers and guarantee
     prev_hash consistency under concurrency.
+
+    action_override: if set, replaces the default action (req.tool) — used for
+    REPLAY_DETECTED events.
     """
     event_id = str(uuid.uuid4())
     ts = _utc_now_iso()
     actor = f"role:{req.role}"
-    action = req.tool
+    action = action_override or req.tool
 
     payload = {
         "request": req.model_dump(),

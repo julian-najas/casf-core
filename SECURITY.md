@@ -42,6 +42,23 @@ caller/agent that invokes the verifier.
   is released.
 - CVE assignment will be requested for issues with CVSS ≥ 7.0.
 
+## Replay Protection
+
+Every `request_id` is tracked via Redis with a configurable TTL (default 24 h).
+
+| Scenario | Behaviour |
+|----------|----------|
+| Same `request_id` + same payload | Returns cached decision (idempotent) |
+| Same `request_id` + different payload | `DENY` — `Inv_ReplayPayloadMismatch` |
+| Redis unavailable + write tool | `DENY` — fail-closed |
+| Redis unavailable + read tool | Pass-through (fail-open) |
+
+Replay events are audited as `REPLAY_DETECTED` in the hash-chained audit trail.
+
+Configuration:
+- `ANTI_REPLAY_ENABLED` (default `true`)
+- `ANTI_REPLAY_TTL_SECONDS` (default `86400`)
+
 ## Security Controls
 
 See [docs/security-narrative.md](docs/security-narrative.md) for the design
