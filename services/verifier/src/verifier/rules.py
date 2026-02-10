@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .metrics import METRICS
 from .models import VerifyRequestV1, VerifyResponseV1
 from .rate_limiter import RateLimiter
 
@@ -68,6 +69,7 @@ def apply_rules_v0(req: VerifyRequestV1, rl: RateLimiter | None = None) -> Verif
                 reason="Rate limiter unavailable (fail-closed)",
             )
         if not res_rl.allowed:
+            METRICS.inc("casf_rate_limit_deny_total")
             return VerifyResponseV1(
                 decision="DENY",
                 violations=["Inv_NoSmsBurst"],
