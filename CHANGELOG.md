@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Security scan CI job:** `pip-audit` (known CVEs), Gitleaks (secrets detection),
+  CycloneDX SBOM generation, and Trivy container image scanning.
+- **Dependabot:** automated weekly updates for pip, GitHub Actions, and Docker
+  dependencies (`.github/dependabot.yml`).
+- **SECURITY.md:** full security policy with vulnerability reporting process,
+  scope, and disclosure policy.
+- **Threat model:** `docs/threat-model.md` — T1–T5 threats with mitigations,
+  data classification, and open items.
+- **Security narrative:** `docs/security-narrative.md` — design philosophy,
+  trust boundaries, and key invariants.
+
+### Changed
+- GitHub Actions pinned to full SHA hashes (supply-chain hardening against
+  tag hijacking). Version tags preserved in comments for Dependabot.
+
 ## [0.8.1] - 2026-02-09
 
 ### Added
