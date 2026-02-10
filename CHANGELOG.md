@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Observability: `/metrics` endpoint** — Prometheus text exposition format,
+  zero external dependencies, thread-safe counters:
+  - `casf_verify_total` — total `/verify` requests
+  - `casf_verify_decision_total{decision}` — decisions by ALLOW/DENY
+  - `casf_replay_hit_total` — anti-replay cache hits (idempotent returns)
+  - `casf_replay_mismatch_total` — payload fingerprint mismatches
+  - `casf_replay_concurrent_total` — concurrent pending denials
+  - `casf_fail_closed_total{trigger}` — fail-closed denials by trigger
+  - `casf_rate_limit_deny_total` — SMS rate-limit denials
+  - `casf_opa_error_total` — OPA evaluation errors
+
 ### Changed
 - **Anti-replay upgraded to idempotent cached decision:** same `request_id` +
   same payload returns the cached decision (200) instead of 409. Different

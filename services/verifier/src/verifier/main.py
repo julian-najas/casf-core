@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from .audit import append_audit_event
+from .metrics import METRICS
 from .models import VerifyRequestV1, VerifyResponseV1
 from .opa_client import OpaClient
 from .rate_limiter import RateLimiter
@@ -75,9 +76,17 @@ def healthz():
     return {"status": "ok", "checks": checks}
 
 
+@app.get("/metrics")
+def metrics():
+    """Prometheus text exposition endpoint."""
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse(METRICS.render(), media_type="text/plain; version=0.0.4; charset=utf-8")
+
 
 @app.post("/verify", response_model=VerifyResponseV1)
 def verify(req: VerifyRequestV1):
+    METRICS.inc("casf_verify_total")
     request_body = req.model_dump()
 
     # ── Anti-replay idempotency gate (must be FIRST) ─────
@@ -92,6 +101,8 @@ def verify(req: VerifyRequestV1):
             )
         except Exception:
             if req.tool in WRITE_TOOLS:
+                METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
+                METRICS.inc("casf_fail_closed_total", labels={"trigger": "replay_unavailable"})
                 return VerifyResponseV1(
                     decision="DENY",
                     violations=["FAIL_CLOSED", "Inv_ReplayCheckUnavailable"],
@@ -104,6 +115,8 @@ def verify(req: VerifyRequestV1):
             # ── Replay detected ──────────────────────────
             if not replay_result.fingerprint_match:
                 # Different payload with same request_id → hard deny
+                METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
+                METRICS.inc("casf_replay_mismatch_total")
                 return VerifyResponseV1(
                     decision="DENY",
                     violations=["Inv_ReplayPayloadMismatch"],
@@ -114,6 +127,8 @@ def verify(req: VerifyRequestV1):
             # Same payload — return cached decision if available
             if replay_result.cached_decision is not None:
                 cached = VerifyResponseV1(**replay_result.cached_decision)
+                METRICS.inc("casf_verify_decision_total", labels={"decision": cached.decision})
+                METRICS.inc("casf_replay_hit_total")
 
                 # Audit the replay event (best-effort)
                 if os.getenv("CASF_DISABLE_AUDIT") != "1":
@@ -126,6 +141,8 @@ def verify(req: VerifyRequestV1):
                 return cached
 
             # Decision still pending (concurrent request) — treat as replay deny
+            METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
+            METRICS.inc("casf_replay_concurrent_total")
             return VerifyResponseV1(
                 decision="DENY",
                 violations=["Inv_ReplayConcurrent"],
@@ -142,6 +159,8 @@ def verify(req: VerifyRequestV1):
 
     # System-level FAIL_CLOSED takes precedence over OPA (infra invariant)
     if "FAIL_CLOSED" in res.violations:
+        METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
+        METRICS.inc("casf_fail_closed_total", labels={"trigger": "rules"})
         if os.getenv("CASF_DISABLE_AUDIT") != "1":
             try:
                 append_audit_event(PG_DSN, req, res)
@@ -162,8 +181,11 @@ def verify(req: VerifyRequestV1):
     try:
         od = opa.evaluate(opa_input)
     except Exception:
+        METRICS.inc("casf_opa_error_total")
         # OPA failure: FAIL-CLOSED for writes, FAIL-OPEN for reads (v1 pragmatic)
         if is_write:
+            METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
+            METRICS.inc("casf_fail_closed_total", labels={"trigger": "opa_unavailable"})
             return VerifyResponseV1(
                 decision="DENY",
                 violations=["FAIL_CLOSED", "OPA_Unavailable"],
@@ -174,6 +196,7 @@ def verify(req: VerifyRequestV1):
             od = None
 
     if od is not None and not od.allow:
+        METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
         return VerifyResponseV1(
             decision="DENY",
             violations=list(dict.fromkeys(od.violations or ["OPA_Deny"])),
@@ -183,6 +206,7 @@ def verify(req: VerifyRequestV1):
 
     # Disable audit in tests if flag is set
     if os.getenv("CASF_DISABLE_AUDIT") == "1":
+        METRICS.inc("casf_verify_decision_total", labels={"decision": res.decision})
         # Still cache the decision for anti-replay before returning
         if ANTI_REPLAY_ENABLED:
             with contextlib.suppress(Exception):
@@ -200,6 +224,7 @@ def verify(req: VerifyRequestV1):
         return JSONResponse(status_code=200, content=res.model_dump())
 
     # Cache decision in Redis for anti-replay idempotency
+    METRICS.inc("casf_verify_decision_total", labels={"decision": res.decision})
     if ANTI_REPLAY_ENABLED:
         with contextlib.suppress(Exception):
             rl.store_decision(
