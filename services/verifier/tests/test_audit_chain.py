@@ -254,7 +254,7 @@ def test_duplicate_event_id_rejected():
                        payload, prev_hash, hash)
                     VALUES
                       (%s::uuid, %s::uuid, now(), 'x', 'x', 'x',
-                       '{}'::jsonb, NULL, 'unique_hash_abc');
+                       '{}'::jsonb, '', 'unique_hash_abc');
                     """,
                 (str(uuid.uuid4()), evt.event_id),
             )
