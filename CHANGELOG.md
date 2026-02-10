@@ -12,12 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero external dependencies, thread-safe counters:
   - `casf_verify_total` — total `/verify` requests
   - `casf_verify_decision_total{decision}` — decisions by ALLOW/DENY
+  - `casf_verify_duration_seconds` — **histogram** latency of `/verify` requests
+  - `casf_verify_in_flight` — **gauge** for concurrent requests
   - `casf_replay_hit_total` — anti-replay cache hits (idempotent returns)
   - `casf_replay_mismatch_total` — payload fingerprint mismatches
   - `casf_replay_concurrent_total` — concurrent pending denials
-  - `casf_fail_closed_total{trigger}` — fail-closed denials by trigger
+  - `casf_fail_closed_total{trigger}` — fail-closed denials by trigger (`redis`, `opa`, `rules`)
   - `casf_rate_limit_deny_total` — SMS rate-limit denials
-  - `casf_opa_error_total` — OPA evaluation errors
+  - `casf_opa_error_total{kind}` — OPA errors by kind (`timeout`, `unavailable`, `bad_status`, `bad_response`)
+- **`docs/observability.md`** — cardinality rules, allowed labels, forbidden labels governance.
+- **OPA error classification** — `OpaError` with kind label for typed failure metrics.
 
 ### Changed
 - **Anti-replay upgraded to idempotent cached decision:** same `request_id` +

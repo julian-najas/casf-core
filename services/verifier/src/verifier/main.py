@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from .audit import append_audit_event
 from .metrics import METRICS
 from .models import VerifyRequestV1, VerifyResponseV1
-from .opa_client import OpaClient
+from .opa_client import OpaClient, OpaError
 from .rate_limiter import RateLimiter
 from .rules import WRITE_TOOLS, apply_rules_v0
 from .settings import ANTI_REPLAY_ENABLED, ANTI_REPLAY_TTL_SECONDS, OPA_URL, PG_DSN, REDIS_URL
@@ -87,6 +87,19 @@ def metrics():
 @app.post("/verify", response_model=VerifyResponseV1)
 def verify(req: VerifyRequestV1):
     METRICS.inc("casf_verify_total")
+    METRICS.gauge_inc("casf_verify_in_flight")
+    try:
+        return _verify_inner(req)
+    finally:
+        METRICS.gauge_dec("casf_verify_in_flight")
+
+
+def _verify_inner(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
+    with METRICS.timer("casf_verify_duration_seconds"):
+        return _verify_core(req)
+
+
+def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
     request_body = req.model_dump()
 
     # ── Anti-replay idempotency gate (must be FIRST) ─────
@@ -102,7 +115,7 @@ def verify(req: VerifyRequestV1):
         except Exception:
             if req.tool in WRITE_TOOLS:
                 METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
-                METRICS.inc("casf_fail_closed_total", labels={"trigger": "replay_unavailable"})
+                METRICS.inc("casf_fail_closed_total", labels={"trigger": "redis"})
                 return VerifyResponseV1(
                     decision="DENY",
                     violations=["FAIL_CLOSED", "Inv_ReplayCheckUnavailable"],
@@ -180,12 +193,12 @@ def verify(req: VerifyRequestV1):
     is_write = req.tool in WRITE_TOOLS
     try:
         od = opa.evaluate(opa_input)
-    except Exception:
-        METRICS.inc("casf_opa_error_total")
+    except OpaError as opa_exc:
+        METRICS.inc("casf_opa_error_total", labels={"kind": opa_exc.kind})
         # OPA failure: FAIL-CLOSED for writes, FAIL-OPEN for reads (v1 pragmatic)
         if is_write:
             METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
-            METRICS.inc("casf_fail_closed_total", labels={"trigger": "opa_unavailable"})
+            METRICS.inc("casf_fail_closed_total", labels={"trigger": "opa"})
             return VerifyResponseV1(
                 decision="DENY",
                 violations=["FAIL_CLOSED", "OPA_Unavailable"],
