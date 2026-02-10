@@ -99,6 +99,15 @@ and a `digest_hash` (SHA-256 of the canonical digest payload).
 - No business-level authorization logic
 - No SLA or high-availability guarantees
 
+## Security
+
+Supply-chain hardening is enforced in CI: SHA-pinned Actions, `pip-audit`,
+Gitleaks secrets scan, Trivy container image scan, and CycloneDX SBOM generation.
+Dependabot monitors pip, GitHub Actions, and Docker dependencies weekly.
+
+- **[Security policy](SECURITY.md)** — vulnerability reporting and coordinated disclosure.
+- **[Threat model](docs/threat-model.md)** — T1 (replay) through T5 (dependency compromise).
+
 ## Project structure
 
 ```
