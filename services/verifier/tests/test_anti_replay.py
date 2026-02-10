@@ -1,6 +1,8 @@
 """Tests for anti-replay idempotency gate (Redis + cached decision)."""
 from __future__ import annotations
 
+import contextlib
+import os
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -159,13 +161,21 @@ def test_pending_decision_returned_as_none():
 # ── Integration tests: /verify endpoint ──────────────────
 
 
-def _make_client():
-    """Create a test client with FakeRedis and audit disabled."""
-    import os
-    os.environ.setdefault("PG_DSN", "postgresql://user:pass@localhost/db")
-    os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-    os.environ["CASF_DISABLE_AUDIT"] = "1"
-    os.environ["ANTI_REPLAY_ENABLED"] = "true"
+@contextlib.contextmanager
+def _isolated_client(**extra_env):
+    """
+    Create a TestClient with FakeRedis + isolated env.
+    On exit, restore os.environ and reload modules so later tests aren't poisoned.
+    """
+    env_overrides = {
+        "PG_DSN": "postgresql://user:pass@localhost/db",
+        "REDIS_URL": "redis://localhost:6379/0",
+        "CASF_DISABLE_AUDIT": "1",
+        "ANTI_REPLAY_ENABLED": "true",
+        **extra_env,
+    }
+    saved = {k: os.environ.get(k) for k in env_overrides}
+    os.environ.update(env_overrides)
 
     with patch("src.verifier.rate_limiter.redis.Redis.from_url", FakeRedis.from_url):
         from importlib import reload
@@ -175,82 +185,81 @@ def _make_client():
         import src.verifier.main as main_mod
         reload(main_mod)
         from fastapi.testclient import TestClient
-        return TestClient(main_mod.app)
+
+        yield TestClient(main_mod.app), main_mod
+
+    # Restore env
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+    # Reload modules to clean state for subsequent tests
+    from importlib import reload
+
+    import src.verifier.settings as s
+    reload(s)
+    import src.verifier.main as m
+    reload(m)
 
 
 def test_verify_replay_returns_cached_decision():
     """Same request_id twice → 2nd returns same decision (200, idempotent)."""
-    client = _make_client()
+    with _isolated_client() as (client, _main_mod):
+        rid = str(uuid.uuid4())
+        payload = {
+            "request_id": rid,
+            "tool": "cliniccloud.list_appointments",
+            "mode": "READ_ONLY",
+            "role": "receptionist",
+            "subject": {"patient_id": "p1"},
+            "args": {},
+            "context": {"tenant_id": "t-demo"},
+        }
 
-    rid = str(uuid.uuid4())
-    payload = {
-        "request_id": rid,
-        "tool": "cliniccloud.list_appointments",
-        "mode": "READ_ONLY",
-        "role": "receptionist",
-        "subject": {"patient_id": "p1"},
-        "args": {},
-        "context": {"tenant_id": "t-demo"},
-    }
+        r1 = client.post("/verify", json=payload)
+        assert r1.status_code == 200, f"Expected 200, got {r1.status_code}: {r1.text}"
+        d1 = r1.json()
 
-    r1 = client.post("/verify", json=payload)
-    assert r1.status_code == 200, f"Expected 200, got {r1.status_code}: {r1.text}"
-    d1 = r1.json()
+        # Second call, same payload → cached decision returned
+        r2 = client.post("/verify", json=payload)
+        assert r2.status_code == 200, f"Expected 200, got {r2.status_code}: {r2.text}"
+        d2 = r2.json()
 
-    # Second call, same payload → cached decision returned
-    r2 = client.post("/verify", json=payload)
-    assert r2.status_code == 200, f"Expected 200, got {r2.status_code}: {r2.text}"
-    d2 = r2.json()
-
-    assert d2["decision"] == d1["decision"]
-    assert d2["violations"] == d1["violations"]
+        assert d2["decision"] == d1["decision"]
+        assert d2["violations"] == d1["violations"]
 
 
 def test_verify_replay_mismatch_returns_deny():
     """Same request_id + different payload → DENY."""
-    client = _make_client()
+    with _isolated_client() as (client, _main_mod):
+        rid = str(uuid.uuid4())
+        payload1 = {
+            "request_id": rid,
+            "tool": "cliniccloud.list_appointments",
+            "mode": "READ_ONLY",
+            "role": "receptionist",
+            "subject": {"patient_id": "p1"},
+            "args": {},
+            "context": {"tenant_id": "t-demo"},
+        }
 
-    rid = str(uuid.uuid4())
-    payload1 = {
-        "request_id": rid,
-        "tool": "cliniccloud.list_appointments",
-        "mode": "READ_ONLY",
-        "role": "receptionist",
-        "subject": {"patient_id": "p1"},
-        "args": {},
-        "context": {"tenant_id": "t-demo"},
-    }
+        r1 = client.post("/verify", json=payload1)
+        assert r1.status_code == 200
 
-    r1 = client.post("/verify", json=payload1)
-    assert r1.status_code == 200
-
-    # Different payload, same request_id
-    payload2 = {**payload1, "subject": {"patient_id": "p2"}}
-    r2 = client.post("/verify", json=payload2)
-    assert r2.status_code == 200  # not 409 — returns structured DENY
-    d2 = r2.json()
-    assert d2["decision"] == "DENY"
-    assert "Inv_ReplayPayloadMismatch" in d2["violations"]
+        # Different payload, same request_id
+        payload2 = {**payload1, "subject": {"patient_id": "p2"}}
+        r2 = client.post("/verify", json=payload2)
+        assert r2.status_code == 200  # not 409 — returns structured DENY
+        d2 = r2.json()
+        assert d2["decision"] == "DENY"
+        assert "Inv_ReplayPayloadMismatch" in d2["violations"]
 
 
 def test_verify_redis_down_write_tool_denies():
     """Redis unavailable + write tool → DENY (fail-closed)."""
-    import os
-    os.environ.setdefault("PG_DSN", "postgresql://user:pass@localhost/db")
-    os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-    os.environ["CASF_DISABLE_AUDIT"] = "1"
-    os.environ["ANTI_REPLAY_ENABLED"] = "true"
-
-    with patch("src.verifier.rate_limiter.redis.Redis.from_url", FakeRedis.from_url):
-        from importlib import reload
-
-        import src.verifier.settings as settings_mod
-        reload(settings_mod)
-        import src.verifier.main as main_mod
-        reload(main_mod)
-        from fastapi.testclient import TestClient
-        client = TestClient(main_mod.app)
-
+    with _isolated_client() as (client, main_mod):
         # Break the replay check
         main_mod.rl._replay_script = MagicMock(side_effect=ConnectionError("redis down"))
 
