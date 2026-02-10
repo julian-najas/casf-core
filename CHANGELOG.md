@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`docs/ops.md` — Operator guide:** environment variables, failure modes,
+  healthcheck configuration, Prometheus scraping/Grafana dashboards, alert rules,
+  anti-replay operations, audit chain verification, and 5 runbooks
+  (fail-closed, OPA down, replay mismatch, chain broken, high latency).
+
+### Added
 - **Observability: `/metrics` endpoint** — Prometheus text exposition format,
   zero external dependencies, thread-safe counters:
   - `casf_verify_total` — total `/verify` requests
