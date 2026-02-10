@@ -1,0 +1,15 @@
+# Default owners for everything
+* @julian-najas
+
+# Policies (OPA Rego) — require security review
+/policies/ @julian-najas
+
+# Contracts (schemas, enums) — require API review
+/contracts/ @julian-najas
+
+# CI / infrastructure
+/.github/ @julian-najas
+/deploy/ @julian-najas
+
+# Verifier service
+/services/verifier/ @julian-najas
