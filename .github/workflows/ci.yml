@@ -130,8 +130,10 @@ jobs:
         run: pip install -e ".[dev]" pip-audit cyclonedx-bom
 
       # ── Vulnerability audit ──────────────────────────────
+      # --skip-editable: local editable packages (casf-verifier) aren't on PyPI.
+      # pip-audit still exits 1 on real vulnerabilities without --strict.
       - name: pip-audit (known vulnerabilities)
-        run: pip-audit --strict --desc --skip-editable
+        run: pip-audit --desc --skip-editable
 
       # ── Secrets scan ─────────────────────────────────────
       - name: Gitleaks (secrets detection)
