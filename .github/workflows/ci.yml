@@ -131,7 +131,7 @@ jobs:
 
       # ── Vulnerability audit ──────────────────────────────
       - name: pip-audit (known vulnerabilities)
-        run: pip-audit --strict --desc
+        run: pip-audit --strict --desc --skip-editable
 
       # ── Secrets scan ─────────────────────────────────────
       - name: Gitleaks (secrets detection)
@@ -168,3 +168,4 @@ jobs:
           exit-code: "1"            # fail on HIGH/CRITICAL
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          trivyignores: .trivyignore

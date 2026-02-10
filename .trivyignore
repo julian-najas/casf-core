@@ -1,0 +1,14 @@
+# Trivy CVE ignore list for CASF-core
+# These CVEs are in vendored packages inside the Python base image's setuptools,
+# NOT in application dependencies. They pose no risk to the verifier service.
+#
+# Review quarterly and remove entries once the base image ships fixes.
+# Last reviewed: 2026-02-10
+
+# jaraco.context path traversal via malicious tar archives
+# Vendored inside setuptools._vendor (not used by app)
+CVE-2026-23949
+
+# wheel privilege escalation via malicious wheel file
+# Vendored inside setuptools._vendor (not used by app)
+CVE-2026-24049
