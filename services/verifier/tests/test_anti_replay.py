@@ -168,7 +168,6 @@ def _isolated_client(**extra_env):
     On exit, restore os.environ and reload modules so later tests aren't poisoned.
     """
     env_overrides = {
-        "PG_DSN": "postgresql://user:pass@localhost/db",
         "REDIS_URL": "redis://localhost:6379/0",
         "CASF_DISABLE_AUDIT": "1",
         "ANTI_REPLAY_ENABLED": "true",
