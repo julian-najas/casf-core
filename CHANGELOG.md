@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Anti-replay upgraded to idempotent cached decision:** same `request_id` +
+  same payload returns the cached decision (200) instead of 409. Different
+  payload with same `request_id` returns `DENY` (`Inv_ReplayPayloadMismatch`).
+- `REPLAY_DETECTED` audit event logged on every replay.
+- Configuration: `ANTI_REPLAY_ENABLED`, `ANTI_REPLAY_TTL_SECONDS`.
+- Threat model T1 closed as **Mitigated**.
+
 ### Added
 - **Security scan CI job:** `pip-audit` (known CVEs), Gitleaks (secrets detection),
   CycloneDX SBOM generation, and Trivy container image scanning.

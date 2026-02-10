@@ -32,14 +32,14 @@ decision in an immutable audit chain, and returns allow/deny.
 
 ## 2. Threats & Mitigations
 
-### T1 — Request Replay
+### T1 — Request Replay ✅ Mitigated
 
 | | |
 |---|---|
 | **Attack** | Adversary resends a previously allowed `request_id` to re-execute a tool |
 | **Impact** | Duplicate clinical action (e.g., double SMS to patient) |
 | **Likelihood** | Medium |
-| **Mitigation** | Redis `SET NX EX` on `request_id` with configurable TTL (default 3600 s). Fail-closed: if Redis is down, request is denied. |
+| **Mitigation** | Idempotent replay gate via Redis Lua script. Same `request_id` + same payload returns the cached decision (no re-execution). Same `request_id` + different payload → `DENY` (`Inv_ReplayPayloadMismatch`). TTL configurable (default 86400 s). Fail-closed on writes when Redis is unavailable. Replay events audited as `REPLAY_DETECTED`. |
 | **Residual risk** | After TTL expires, the same `request_id` could be replayed. Acceptable: the audit chain still records both events. |
 
 ### T2 — Audit Tampering

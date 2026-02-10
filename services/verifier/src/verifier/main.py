@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 
 import httpx
@@ -13,7 +14,7 @@ from .models import VerifyRequestV1, VerifyResponseV1
 from .opa_client import OpaClient
 from .rate_limiter import RateLimiter
 from .rules import WRITE_TOOLS, apply_rules_v0
-from .settings import OPA_URL, PG_DSN, REDIS_URL
+from .settings import ANTI_REPLAY_ENABLED, ANTI_REPLAY_TTL_SECONDS, OPA_URL, PG_DSN, REDIS_URL
 
 rl = RateLimiter(REDIS_URL)
 opa = OpaClient(OPA_URL)
@@ -77,26 +78,60 @@ def healthz():
 
 @app.post("/verify", response_model=VerifyResponseV1)
 def verify(req: VerifyRequestV1):
-    # ── Anti-replay gate (must be FIRST) ─────────────────
-    # Same request_id twice within 24h → DENY.
+    request_body = req.model_dump()
+
+    # ── Anti-replay idempotency gate (must be FIRST) ─────
+    # Same request_id + same payload → return cached decision.
+    # Same request_id + different payload → DENY (mismatch).
     # Redis failure → FAIL_CLOSED on writes, pass-through on reads.
-    try:
-        is_new = rl.check_replay(req.request_id)
-    except Exception:
-        if req.tool in WRITE_TOOLS:
+    replay_result = None
+    if ANTI_REPLAY_ENABLED:
+        try:
+            replay_result = rl.check_replay(
+                req.request_id, request_body, ttl_s=ANTI_REPLAY_TTL_SECONDS,
+            )
+        except Exception:
+            if req.tool in WRITE_TOOLS:
+                return VerifyResponseV1(
+                    decision="DENY",
+                    violations=["FAIL_CLOSED", "Inv_ReplayCheckUnavailable"],
+                    allowed_outputs=[],
+                    reason="Replay check unavailable (fail-closed on write)",
+                )
+            replay_result = None  # fail-open for reads
+
+        if replay_result is not None and not replay_result.is_new:
+            # ── Replay detected ──────────────────────────
+            if not replay_result.fingerprint_match:
+                # Different payload with same request_id → hard deny
+                return VerifyResponseV1(
+                    decision="DENY",
+                    violations=["Inv_ReplayPayloadMismatch"],
+                    allowed_outputs=[],
+                    reason=f"request_id {req.request_id} already used with different payload",
+                )
+
+            # Same payload — return cached decision if available
+            if replay_result.cached_decision is not None:
+                cached = VerifyResponseV1(**replay_result.cached_decision)
+
+                # Audit the replay event (best-effort)
+                if os.getenv("CASF_DISABLE_AUDIT") != "1":
+                    with contextlib.suppress(Exception):
+                        append_audit_event(
+                            PG_DSN, req, cached,
+                            action_override="REPLAY_DETECTED",
+                        )
+
+                return cached
+
+            # Decision still pending (concurrent request) — treat as replay deny
             return VerifyResponseV1(
                 decision="DENY",
-                violations=["FAIL_CLOSED", "Inv_ReplayCheckUnavailable"],
+                violations=["Inv_ReplayConcurrent"],
                 allowed_outputs=[],
-                reason="Replay check unavailable (fail-closed on write)",
+                reason=f"request_id {req.request_id} is being processed concurrently",
             )
-        is_new = True  # fail-open for reads
-
-    if not is_new:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Replay detected: request_id {req.request_id} already processed",
-        )
 
     # Apply deterministic rules
     res = apply_rules_v0(req, rl=rl)
@@ -148,17 +183,28 @@ def verify(req: VerifyRequestV1):
 
     # Disable audit in tests if flag is set
     if os.getenv("CASF_DISABLE_AUDIT") == "1":
+        # Still cache the decision for anti-replay before returning
+        if ANTI_REPLAY_ENABLED:
+            with contextlib.suppress(Exception):
+                rl.store_decision(
+                    req.request_id, request_body, res.model_dump(),
+                    ttl_s=ANTI_REPLAY_TTL_SECONDS,
+                )
         return res
 
     # Always audit (append-only + hash chain)
     try:
         append_audit_event(PG_DSN, req, res)
     except Exception:
-        # Audit failure policy v0:
-        # - do NOT block the response (we'll tighten later with mode latching / fail-closed writes)
-        # - but surface a hard signal in headers/body is avoided in v0 to keep UX stable
-        # For now, we still return decision but mark reason.
         res.reason = f"{res.reason} | audit_append_failed"
         return JSONResponse(status_code=200, content=res.model_dump())
+
+    # Cache decision in Redis for anti-replay idempotency
+    if ANTI_REPLAY_ENABLED:
+        with contextlib.suppress(Exception):
+            rl.store_decision(
+                req.request_id, request_body, res.model_dump(),
+                ttl_s=ANTI_REPLAY_TTL_SECONDS,
+            )
 
     return res

@@ -1,10 +1,12 @@
 import os
 import uuid
 
+os.environ.setdefault("PG_DSN", "dbname=casf user=casf password=casf host=localhost port=5432")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("ANTI_REPLAY_ENABLED", "false")
+
 from fastapi.testclient import TestClient
 
-os.environ["PG_DSN"] = "postgresql://user:pass@localhost/db"
-os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 from src.verifier.main import app
 
 client = TestClient(app)
