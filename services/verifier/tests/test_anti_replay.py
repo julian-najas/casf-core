@@ -177,31 +177,32 @@ def _isolated_client(**extra_env):
     saved = {k: os.environ.get(k) for k in env_overrides}
     os.environ.update(env_overrides)
 
-    with patch("src.verifier.rate_limiter.redis.Redis.from_url", FakeRedis.from_url):
+    try:
+        with patch("src.verifier.rate_limiter.redis.Redis.from_url", FakeRedis.from_url):
+            from importlib import reload
+
+            import src.verifier.settings as settings_mod
+            reload(settings_mod)
+            import src.verifier.main as main_mod
+            reload(main_mod)
+            from fastapi.testclient import TestClient
+
+            yield TestClient(main_mod.app), main_mod
+    finally:
+        # Restore env
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+        # Reload modules to clean state for subsequent tests
         from importlib import reload
 
-        import src.verifier.settings as settings_mod
-        reload(settings_mod)
-        import src.verifier.main as main_mod
-        reload(main_mod)
-        from fastapi.testclient import TestClient
-
-        yield TestClient(main_mod.app), main_mod
-
-    # Restore env
-    for k, v in saved.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-
-    # Reload modules to clean state for subsequent tests
-    from importlib import reload
-
-    import src.verifier.settings as s
-    reload(s)
-    import src.verifier.main as m
-    reload(m)
+        import src.verifier.settings as s
+        reload(s)
+        import src.verifier.main as m
+        reload(m)
 
 
 def test_verify_replay_returns_cached_decision():
