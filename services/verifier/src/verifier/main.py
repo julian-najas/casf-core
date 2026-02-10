@@ -94,12 +94,12 @@ def verify(req: VerifyRequestV1):
         METRICS.gauge_dec("casf_verify_in_flight")
 
 
-def _verify_inner(req: VerifyRequestV1) -> VerifyResponseV1:
+def _verify_inner(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
     with METRICS.timer("casf_verify_duration_seconds"):
         return _verify_core(req)
 
 
-def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1:
+def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
     request_body = req.model_dump()
 
     # ── Anti-replay idempotency gate (must be FIRST) ─────
