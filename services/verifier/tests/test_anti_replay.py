@@ -1,4 +1,5 @@
 """Tests for anti-replay idempotency gate (Redis + cached decision)."""
+
 from __future__ import annotations
 
 import contextlib
@@ -52,6 +53,7 @@ class FakeRedis:
                 val = int(redis_ref._store.get(k, "0")) + 1
                 redis_ref._store[k] = str(val)
                 return val
+
             return lua_incr
 
         # replay-check script
@@ -181,8 +183,10 @@ def _isolated_client(**extra_env):
             from importlib import reload
 
             import src.verifier.settings as settings_mod
+
             reload(settings_mod)
             import src.verifier.main as main_mod
+
             reload(main_mod)
             from fastapi.testclient import TestClient
 
@@ -199,8 +203,10 @@ def _isolated_client(**extra_env):
         from importlib import reload
 
         import src.verifier.settings as s
+
         reload(s)
         import src.verifier.main as m
+
         reload(m)
 
 

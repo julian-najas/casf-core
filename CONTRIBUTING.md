@@ -21,9 +21,12 @@ pip install -e ".[dev]"
 ```bash
 # Run all checks
 make lint          # ruff + mypy
+make fmt           # auto-format code (ruff format)
 make test          # pytest (requires Postgres + Redis + OPA)
 make opa-test      # OPA policy tests via Docker
 make smoke         # Full-stack smoke test
+make build         # Build Docker image
+make check         # All gates: lint + format + test + OPA
 
 # Start/stop the stack
 make up            # docker compose up --build -d
@@ -89,3 +92,19 @@ New features belong to a separate project or layer.
 ## Reporting security issues
 
 See [SECURITY.md](SECURITY.md).
+
+## Release process
+
+Releases follow **strict SemVer** (`MAJOR.MINOR.PATCH`):
+
+1. Update `CHANGELOG.md`: move `[Unreleased]` items to a new version heading.
+2. Commit: `git commit -m "release: vX.Y.Z"`
+3. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`
+4. Push: `git push origin main --tags`
+5. Create a **GitHub Release** from the tag with the changelog section as body.
+
+**Rules:**
+- Tags are **immutable** — never delete or re-tag.
+- Every release must have CI green before tagging.
+- Release notes are the corresponding `CHANGELOG.md` section (copy verbatim).
+

@@ -6,10 +6,14 @@ import uuid
 from datetime import UTC, datetime
 
 import psycopg2
+import psycopg2.extras
 
 from .models import AuditEventV1, VerifyRequestV1, VerifyResponseV1
 
+psycopg2.extras.register_uuid()
+
 # ── Helpers ──────────────────────────────────────────────
+
 
 def _utc_now_iso() -> str:
     """ISO-8601 UTC timestamp, always with 'Z' suffix (no +00:00 ambiguity)."""
@@ -18,7 +22,23 @@ def _utc_now_iso() -> str:
 
 def _canonical_json(obj) -> str:
     """Stable JSON: sorted keys, compact separators, UTF-8."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    def _default(o):
+        if isinstance(o, uuid.UUID):
+            return str(o)
+        if isinstance(o, datetime):
+            # Prefer a stable ISO string; UTC becomes 'Z' where possible.
+            s = o.isoformat()
+            return s.replace("+00:00", "Z")
+        return str(o)
+
+    return json.dumps(
+        obj,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=_default,
+    )
 
 
 def _sha256_hex(s: str) -> str:
@@ -27,9 +47,10 @@ def _sha256_hex(s: str) -> str:
 
 # ── Hash contract ────────────────────────────────────────
 
+
 def compute_hash(
-    request_id: str,
-    event_id: str,
+    request_id: str | uuid.UUID,
+    event_id: str | uuid.UUID,
     ts: str,
     actor: str,
     action: str,
@@ -43,16 +64,16 @@ def compute_hash(
                + canonical_json(payload) + prev_hash)
     All fields concatenated as plain strings.  prev_hash is "" for genesis.
     """
-    parts = [
-        request_id,
-        event_id,
-        ts,
-        actor,
-        action,
-        decision,
+    parts = (
+        str(request_id),
+        str(event_id),
+        str(ts),
+        str(actor),
+        str(action),
+        str(decision),
         _canonical_json(payload),
-        prev_hash,
-    ]
+        str(prev_hash),
+    )
     return _sha256_hex("".join(parts))
 
 
@@ -82,6 +103,7 @@ def verify_chain(events: list[AuditEventV1]) -> tuple[bool, int | None]:
 
 # ── Persistence ──────────────────────────────────────────
 
+
 def _get_prev_hash(conn) -> str:
     """Fetch the hash of the last event (inside the same transaction / lock)."""
     with conn.cursor() as cur:
@@ -105,14 +127,14 @@ def append_audit_event(
     action_override: if set, replaces the default action (req.tool) — used for
     REPLAY_DETECTED events.
     """
-    event_id = str(uuid.uuid4())
+    event_id = uuid.uuid4()
     ts = _utc_now_iso()
     actor = f"role:{req.role}"
     action = action_override or req.tool
 
     payload = {
-        "request": req.model_dump(),
-        "response": res.model_dump(),
+        "request": req.model_dump(mode="json"),
+        "response": res.model_dump(mode="json"),
     }
 
     conn = psycopg2.connect(pg_dsn)
@@ -159,8 +181,8 @@ def append_audit_event(
                    %s::jsonb, %s, %s);
                 """,
                 (
-                    evt.request_id,
-                    evt.event_id,
+                    str(evt.request_id),
+                    str(evt.event_id),
                     evt.ts,
                     evt.actor,
                     evt.action,

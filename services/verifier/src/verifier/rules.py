@@ -16,12 +16,19 @@ READ_ONLY_ALLOWED = {
     "cliniccloud.list_appointments": ["slots_aggregated"],
 }
 
+
 def is_write_tool(tool: str) -> bool:
     return tool in WRITE_TOOLS
 
+
 def apply_rules_v0(req: VerifyRequestV1, rl: RateLimiter | None = None) -> VerifyResponseV1:
     # Hard requirement: traceability
-    patient_id = req.subject.get("patient_id")
+    # Accept both the typed SubjectV1 (runtime) and dict-like subjects
+    # (some tests and callers use SimpleNamespace).
+    if isinstance(req.subject, dict):
+        patient_id = req.subject.get("patient_id")
+    else:
+        patient_id = getattr(req.subject, "patient_id", None)
     if not patient_id:
         return VerifyResponseV1(
             decision="DENY",
@@ -57,7 +64,7 @@ def apply_rules_v0(req: VerifyRequestV1, rl: RateLimiter | None = None) -> Verif
                 allowed_outputs=[],
                 reason="Rate limiter not available",
             )
-        key = f"sms:{req.subject['patient_id']}"
+        key = f"sms:{patient_id}"
         try:
             res_rl = rl.check(key=key, limit=1, window_s=3600)
         except Exception:

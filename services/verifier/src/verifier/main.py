@@ -6,16 +6,21 @@ import os
 import httpx
 import psycopg2
 import redis as redis_lib
+import structlog
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 from .audit import append_audit_event
+from .logging import get_logger, setup_logging
 from .metrics import METRICS
 from .models import VerifyRequestV1, VerifyResponseV1
 from .opa_client import OpaClient, OpaError
 from .rate_limiter import RateLimiter
 from .rules import WRITE_TOOLS, apply_rules_v0
 from .settings import ANTI_REPLAY_ENABLED, ANTI_REPLAY_TTL_SECONDS, OPA_URL, PG_DSN, REDIS_URL
+
+setup_logging()
+logger = get_logger()
 
 rl = RateLimiter(REDIS_URL)
 opa = OpaClient(OPA_URL)
@@ -24,6 +29,7 @@ app = FastAPI(title="CASF Verifier", version="0.1")
 
 
 # ── Healthchecks ─────────────────────────────────────────
+
 
 @app.get("/health")
 def health():
@@ -81,7 +87,9 @@ def metrics():
     """Prometheus text exposition endpoint."""
     from fastapi.responses import PlainTextResponse
 
-    return PlainTextResponse(METRICS.render(), media_type="text/plain; version=0.0.4; charset=utf-8")
+    return PlainTextResponse(
+        METRICS.render(), media_type="text/plain; version=0.0.4; charset=utf-8"
+    )
 
 
 @app.post("/verify", response_model=VerifyResponseV1)
@@ -100,7 +108,20 @@ def _verify_inner(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
 
 
 def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
-    request_body = req.model_dump()
+    # Use JSON-mode dump so datetimes become strings and the body is stable for:
+    # - replay fingerprinting (json.dumps)
+    # - OPA payload (httpx json=...)
+    request_body = req.model_dump(mode="json")
+
+    # Bind request_id to all subsequent log entries in this request
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        request_id=str(req.request_id),
+        tool=req.tool,
+        role=req.role,
+        mode=req.mode,
+    )
+    logger.info("verify_start")
 
     # ── Anti-replay idempotency gate (must be FIRST) ─────
     # Same request_id + same payload → return cached decision.
@@ -110,7 +131,9 @@ def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
     if ANTI_REPLAY_ENABLED:
         try:
             replay_result = rl.check_replay(
-                req.request_id, request_body, ttl_s=ANTI_REPLAY_TTL_SECONDS,
+                str(req.request_id),
+                request_body,
+                ttl_s=ANTI_REPLAY_TTL_SECONDS,
             )
         except Exception:
             if req.tool in WRITE_TOOLS:
@@ -130,6 +153,7 @@ def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
                 # Different payload with same request_id → hard deny
                 METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
                 METRICS.inc("casf_replay_mismatch_total")
+                logger.warning("replay_mismatch", decision="DENY")
                 return VerifyResponseV1(
                     decision="DENY",
                     violations=["Inv_ReplayPayloadMismatch"],
@@ -142,12 +166,15 @@ def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
                 cached = VerifyResponseV1(**replay_result.cached_decision)
                 METRICS.inc("casf_verify_decision_total", labels={"decision": cached.decision})
                 METRICS.inc("casf_replay_hit_total")
+                logger.info("replay_hit", decision=cached.decision)
 
                 # Audit the replay event (best-effort)
                 if os.getenv("CASF_DISABLE_AUDIT") != "1":
                     with contextlib.suppress(Exception):
                         append_audit_event(
-                            PG_DSN, req, cached,
+                            PG_DSN,
+                            req,
+                            cached,
                             action_override="REPLAY_DETECTED",
                         )
 
@@ -174,6 +201,7 @@ def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
     if "FAIL_CLOSED" in res.violations:
         METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
         METRICS.inc("casf_fail_closed_total", labels={"trigger": "rules"})
+        logger.warning("fail_closed", trigger="rules", violations=res.violations)
         if os.getenv("CASF_DISABLE_AUDIT") != "1":
             try:
                 append_audit_event(PG_DSN, req, res)
@@ -186,15 +214,16 @@ def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
         "tool": req.tool,
         "mode": req.mode,
         "role": req.role,
-        "subject": req.subject,
+        "subject": req.subject.model_dump(mode="json"),
         "args": req.args,
-        "context": req.context,
+        "context": req.context.model_dump(mode="json"),
     }
     is_write = req.tool in WRITE_TOOLS
     try:
         od = opa.evaluate(opa_input)
     except OpaError as opa_exc:
         METRICS.inc("casf_opa_error_total", labels={"kind": opa_exc.kind})
+        logger.error("opa_error", kind=opa_exc.kind, error=str(opa_exc))
         # OPA failure: FAIL-CLOSED for writes, FAIL-OPEN for reads (v1 pragmatic)
         if is_write:
             METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
@@ -210,6 +239,7 @@ def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
 
     if od is not None and not od.allow:
         METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
+        logger.info("verify_decision", decision="DENY", source="opa", violations=od.violations)
         return VerifyResponseV1(
             decision="DENY",
             violations=list(dict.fromkeys(od.violations or ["OPA_Deny"])),
@@ -224,24 +254,49 @@ def _verify_core(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
         if ANTI_REPLAY_ENABLED:
             with contextlib.suppress(Exception):
                 rl.store_decision(
-                    req.request_id, request_body, res.model_dump(),
+                    str(req.request_id),
+                    request_body,
+                    res.model_dump(),
                     ttl_s=ANTI_REPLAY_TTL_SECONDS,
                 )
         return res
 
     # Always audit (append-only + hash chain)
+    # If audit append fails, we must FAIL_CLOSED to preserve the repo's stated invariant:
+    # "No decision without audit record".
     try:
         append_audit_event(PG_DSN, req, res)
     except Exception:
-        res.reason = f"{res.reason} | audit_append_failed"
-        return JSONResponse(status_code=200, content=res.model_dump())
+        METRICS.inc("casf_verify_decision_total", labels={"decision": "DENY"})
+        METRICS.inc("casf_fail_closed_total", labels={"trigger": "postgres"})
+        logger.error("audit_append_failed", trigger="postgres")
+        fail = VerifyResponseV1(
+            decision="DENY",
+            violations=["FAIL_CLOSED", "Audit_Unavailable"],
+            allowed_outputs=[],
+            reason="Audit append failed (fail-closed)",
+        )
+
+        # Best-effort: unblock anti-replay pending key with a deterministic denial
+        if ANTI_REPLAY_ENABLED:
+            with contextlib.suppress(Exception):
+                rl.store_decision(
+                    str(req.request_id),
+                    request_body,
+                    fail.model_dump(),
+                    ttl_s=ANTI_REPLAY_TTL_SECONDS,
+                )
+        return JSONResponse(status_code=200, content=fail.model_dump())
 
     # Cache decision in Redis for anti-replay idempotency
     METRICS.inc("casf_verify_decision_total", labels={"decision": res.decision})
+    logger.info("verify_decision", decision=res.decision)
     if ANTI_REPLAY_ENABLED:
         with contextlib.suppress(Exception):
             rl.store_decision(
-                req.request_id, request_body, res.model_dump(),
+                str(req.request_id),
+                request_body,
+                res.model_dump(),
                 ttl_s=ANTI_REPLAY_TTL_SECONDS,
             )
 

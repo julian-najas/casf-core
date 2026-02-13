@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Structured logging** — `structlog` JSON output with context-bound variables
+  (`request_id`, `tool`, `role`, `mode`) propagated via `contextvars`. Log events:
+  `verify_start`, `verify_decision`, `replay_hit`, `replay_mismatch`,
+  `fail_closed`, `opa_error`, `audit_append_failed`.
+- **`logging.py`** — centralised `setup_logging()` + `get_logger()`, configurable
+  via `LOG_LEVEL` and `LOG_FORMAT` env vars.
+- **Typed Pydantic models** — `SubjectV1`, `ContextV1` with field validation
+  (`patient_id` min_length=1, `tenant_id` min_length=1, `extra="allow"`).
+  `request_id`, `event_id` are now `uuid.UUID` (was bare `str`).
+- **Fail-closed on audit failure** — if Postgres audit append fails, the verifier
+  returns `DENY` with `FAIL_CLOSED` + `Audit_Unavailable` violations.
+  New metric: `casf_fail_closed_total{trigger="postgres"}`.
+- **`test_audit_fail_closed.py`** — regression test for audit-failure deny path.
+- **`docs/architecture.md`** — component diagram, request flow, key design
+  decisions, module map, external dependencies.
+- **`docs/operability.md`** — health endpoints, failure modes, restart/recovery,
+  scaling, log inspection, runbook, backup/restore, monitoring alerts.
+- **`.env.example`** — reference environment configuration.
+- **`CODE_OF_CONDUCT.md`** — Contributor Covenant v2.1.
+- **Lock files** — `requirements.lock` and `requirements-dev.lock` for
+  reproducible installs.
+- **`make fmt`** — auto-format code (ruff format + ruff check --fix).
+- **`make build`** — build Docker image.
+- **`make fmt-check`** / **`make check`** — CI-ready gates (lint + format + test + OPA).
+- **CI: ruff format check** — added `ruff format --check` step to lint job.
+- **Release process** — documented in `CONTRIBUTING.md` with strict SemVer rules.
 - **Observability: `/metrics` endpoint** — Prometheus text exposition format,
   zero external dependencies, thread-safe counters:
   - `casf_verify_total` — total `/verify` requests
@@ -17,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `casf_replay_hit_total` — anti-replay cache hits (idempotent returns)
   - `casf_replay_mismatch_total` — payload fingerprint mismatches
   - `casf_replay_concurrent_total` — concurrent pending denials
-  - `casf_fail_closed_total{trigger}` — fail-closed denials by trigger (`redis`, `opa`, `rules`)
+  - `casf_fail_closed_total{trigger}` — fail-closed denials by trigger (`redis`, `opa`, `rules`, `postgres`)
   - `casf_rate_limit_deny_total` — SMS rate-limit denials
   - `casf_opa_error_total{kind}` — OPA errors by kind (`timeout`, `unavailable`, `bad_status`, `bad_response`)
 - **`docs/observability.md`** — cardinality rules, allowed labels, forbidden labels governance.
@@ -27,6 +53,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Anti-replay upgraded to idempotent cached decision:** same `request_id` +
   same payload returns the cached decision (200) instead of 409. Different
   payload with same `request_id` returns `DENY` (`Inv_ReplayPayloadMismatch`).
+- **`model_dump(mode="json")`** — all Pydantic serializations use JSON mode for
+  stable datetime/UUID strings (replay fingerprinting, OPA payloads, audit).
+- **`_canonical_json`** — handles `uuid.UUID` and `datetime` via custom `default`.
+- **`psycopg2.extras.register_uuid()`** — native UUID handling in Postgres driver.
+- **`compute_hash`** — accepts `str | uuid.UUID` for `request_id` / `event_id`.
+- **Contract** — `request.v1.json` `request_id` now has `"format": "uuid"`.
+- **Test isolation** — all test files use `_get_client()` with `importlib.reload`
+  and OPA mocking (`patch.object`) to avoid external dependencies.
+- **`structlog` dependency** — added to `pyproject.toml` runtime deps.
+- **`pytest-cov`** — added to dev deps; `--cov-fail-under=80` enforced.
 - `REPLAY_DETECTED` audit event logged on every replay.
 - Configuration: `ANTI_REPLAY_ENABLED`, `ANTI_REPLAY_TTL_SECONDS`.
 - Threat model T1 closed as **Mitigated**.
@@ -122,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic `/health`, `/verify` endpoints.
 - 6 OPA policy tests.
 
-[Unreleased]: https://github.com/julian-najas/casf-core/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/julian-najas/casf-core/compare/v0.12.0...HEAD
 [0.8.1]: https://github.com/julian-najas/casf-core/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/julian-najas/casf-core/compare/v0.7.0-freeze...v0.8.0
 [0.7.0]: https://github.com/julian-najas/casf-core/compare/v0.6-redis-rate-limit...v0.7.0-freeze

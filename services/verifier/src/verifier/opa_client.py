@@ -7,6 +7,7 @@ import httpx
 
 # ── Error classification ─────────────────────────────────
 
+
 class OpaError(Exception):
     """Base OPA evaluation error with a kind label for metrics."""
 
@@ -19,6 +20,7 @@ class OpaError(Exception):
 class OpaDecision:
     allow: bool
     violations: list[str]
+
 
 class OpaClient:
     def __init__(self, opa_url: str, timeout_s: float = 0.35):

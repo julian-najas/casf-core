@@ -12,6 +12,7 @@ Usage:
     METRICS.gauge_inc("verify_in_flight")
     METRICS.gauge_dec("verify_in_flight")
 """
+
 from __future__ import annotations
 
 import threading
@@ -45,7 +46,19 @@ class _Metrics:
         self,
         name: str,
         help_text: str,
-        buckets: tuple[float, ...] = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+        buckets: tuple[float, ...] = (
+            0.005,
+            0.01,
+            0.025,
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            1.0,
+            2.5,
+            5.0,
+            10.0,
+        ),
     ) -> None:
         """Register a histogram with explicit bucket boundaries."""
         self._help[name] = help_text
@@ -155,9 +168,13 @@ class _Metrics:
                 cumulative = 0
                 for i, bound in enumerate(buckets):
                     cumulative += bucket_counts[i]
-                    lines.append(f"{name}_bucket{_render_labels((*frozen_lbl, ('le', str(bound))))} {cumulative}")
+                    lines.append(
+                        f"{name}_bucket{_render_labels((*frozen_lbl, ('le', str(bound))))} {cumulative}"
+                    )
                 cumulative += bucket_counts[-1] - sum(bucket_counts[:-1])  # already counted above
-                lines.append(f"{name}_bucket{_render_labels((*frozen_lbl, ('le', '+Inf')))} {sum_count[1]}")
+                lines.append(
+                    f"{name}_bucket{_render_labels((*frozen_lbl, ('le', '+Inf')))} {sum_count[1]}"
+                )
                 lines.append(f"{name}_sum{_render_labels(frozen_lbl)} {sum_count[0]:.6f}")
                 lines.append(f"{name}_count{_render_labels(frozen_lbl)} {sum_count[1]}")
 
@@ -180,7 +197,9 @@ METRICS.describe("casf_rate_limit_deny_total", "SMS rate-limit denials.")
 METRICS.describe("casf_opa_error_total", "OPA evaluation errors by kind.")
 
 # Gauge
-METRICS.describe("casf_verify_in_flight", "Requests currently being processed.", metric_type="gauge")
+METRICS.describe(
+    "casf_verify_in_flight", "Requests currently being processed.", metric_type="gauge"
+)
 
 # Histogram
 METRICS.register_histogram(
@@ -191,6 +210,7 @@ METRICS.register_histogram(
 
 
 # ── Helpers ──────────────────────────────────────────────
+
 
 def _freeze(labels: dict[str, str] | None) -> tuple[tuple[str, str], ...]:
     if not labels:

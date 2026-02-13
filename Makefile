@@ -13,6 +13,10 @@ lint: ## Run ruff + mypy
 	cd $(VERIFIER) && python -m ruff check src/ tests/
 	cd $(VERIFIER) && python -m mypy src/verifier/
 
+fmt: ## Format code (ruff format)
+	cd $(VERIFIER) && python -m ruff format src/ tests/
+	cd $(VERIFIER) && python -m ruff check --fix src/ tests/
+
 test: ## Run pytest (requires Postgres + Redis + OPA)
 	cd $(VERIFIER) && python -m pytest tests/ -v
 
@@ -29,6 +33,9 @@ opa-check: ## Static analysis of OPA policies
 		openpolicyagent/opa:0.63.0 check /policies
 
 # ── Stack ────────────────────────────────────────────────
+
+build: ## Build Docker image
+	docker build -t casf-verifier:latest $(VERIFIER)
 
 up: ## Start full stack (build + detach)
 	$(COMPOSE) up --build -d
@@ -56,4 +63,7 @@ clean: ## Remove caches and build artifacts
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 	find . -name '*.egg-info' -exec rm -rf {} + 2>/dev/null || true
 
-check: lint test opa-test ## Run all checks (lint + test + OPA)
+fmt-check: ## Verify formatting (CI gate)
+	cd $(VERIFIER) && python -m ruff format --check src/ tests/
+
+check: lint fmt-check test opa-test ## Run all checks (lint + format + test + OPA)

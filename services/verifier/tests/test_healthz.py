@@ -2,6 +2,7 @@
 Tests for /healthz readiness probe.
 Requires Postgres, Redis, and OPA running locally.
 """
+
 import os
 
 os.environ.setdefault("PG_DSN", "dbname=casf user=casf password=casf host=localhost port=5432")
@@ -15,10 +16,13 @@ def _get_client():
     from importlib import reload
 
     import src.verifier.settings as settings_mod
+
     reload(settings_mod)
     import src.verifier.main as main_mod
+
     reload(main_mod)
     from fastapi.testclient import TestClient
+
     return TestClient(main_mod.app)
 
 

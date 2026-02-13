@@ -51,7 +51,9 @@ def _request_fingerprint(request_body: dict) -> str:
 
 class RateLimiter:
     def __init__(self, redis_url: str, timeout_s: float = 0.2):
-        self._r = redis.Redis.from_url(redis_url, socket_timeout=timeout_s, socket_connect_timeout=timeout_s)
+        self._r = redis.Redis.from_url(
+            redis_url, socket_timeout=timeout_s, socket_connect_timeout=timeout_s
+        )
         self._script = self._r.register_script(LUA_INCR_EXPIRE)
         self._replay_script = self._r.register_script(LUA_REPLAY_CHECK)
 
@@ -67,7 +69,9 @@ class RateLimiter:
 
     # ── Anti-replay (idempotency) ────────────────────────
 
-    def check_replay(self, request_id: str, request_body: dict, ttl_s: int = 86400) -> ReplayCheckResult:
+    def check_replay(
+        self, request_id: str, request_body: dict, ttl_s: int = 86400
+    ) -> ReplayCheckResult:
         """
         Idempotent anti-replay gate.
 
@@ -97,7 +101,9 @@ class RateLimiter:
             fingerprint_match=True,
         )
 
-    def store_decision(self, request_id: str, request_body: dict, decision: dict, ttl_s: int = 86400) -> None:
+    def store_decision(
+        self, request_id: str, request_body: dict, decision: dict, ttl_s: int = 86400
+    ) -> None:
         """
         Update the replay key with the actual decision (after processing).
         Uses SET XX KEEPTTL to preserve the original TTL.

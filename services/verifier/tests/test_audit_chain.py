@@ -4,6 +4,7 @@ Run with:
     $env:PG_DSN="dbname=casf user=casf password=casf host=localhost port=5432"
     python -m pytest tests/test_audit_chain.py -v
 """
+
 import os
 import uuid
 
@@ -21,12 +22,11 @@ from src.verifier.models import (
     VerifyResponseV1,
 )
 
-PG_DSN = os.environ.get(
-    "PG_DSN", "dbname=casf user=casf password=casf host=localhost port=5432"
-)
+PG_DSN = os.environ.get("PG_DSN", "dbname=casf user=casf password=casf host=localhost port=5432")
 
 
 # ── Fixtures ─────────────────────────────────────────────
+
 
 def _clean_audit_table():
     """Truncate audit_events so each test starts with a clean chain."""
@@ -71,6 +71,7 @@ def _mk_res(**overrides) -> VerifyResponseV1:
 
 
 # ── Unit: compute_hash is deterministic ──────────────────
+
 
 def test_compute_hash_deterministic():
     kwargs = dict(
@@ -118,6 +119,7 @@ def test_compute_hash_changes_with_any_field():
 
 # ── Integration: genesis event ───────────────────────────
 
+
 def test_genesis_event_has_empty_prev_hash():
     req = _mk_req()
     res = _mk_res()
@@ -130,6 +132,7 @@ def test_genesis_event_has_empty_prev_hash():
 
 
 # ── Integration: chain of 2 events ──────────────────────
+
 
 def test_chain_two_events_linked():
     req1 = _mk_req()
@@ -148,6 +151,7 @@ def test_chain_two_events_linked():
 
 # ── Integration: verify_chain passes on valid data ───────
 
+
 def test_verify_chain_valid():
     evts = []
     for _i in range(3):
@@ -161,6 +165,7 @@ def test_verify_chain_valid():
 
 
 # ── Integration: verify_chain detects tampering ──────────
+
 
 def test_verify_chain_detects_tampered_hash():
     evts = []
@@ -214,6 +219,7 @@ def test_verify_chain_detects_broken_prev_link():
 
 # ── Integration: payload stored as JSONB, readable ───────
 
+
 def test_payload_readable_from_db():
     req = _mk_req()
     res = _mk_res()
@@ -229,6 +235,7 @@ def test_payload_readable_from_db():
             row = cur.fetchone()
             assert row is not None
             import json
+
             payload = json.loads(row[0]) if isinstance(row[0], str) else row[0]
             assert payload["request"]["tool"] == req.tool
             assert payload["response"]["decision"] == res.decision
@@ -237,6 +244,7 @@ def test_payload_readable_from_db():
 
 
 # ── Integration: unique constraints enforced ─────────────
+
 
 def test_duplicate_event_id_rejected():
     req = _mk_req()

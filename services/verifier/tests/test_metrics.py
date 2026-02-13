@@ -1,4 +1,9 @@
-"""Tests for the /metrics endpoint and in-process counters (DoD: enterprise-grade)."""
+"""Tests for the /metrics endpoint and in-process counters (DoD: enterprise-grade).
+
+These tests avoid external dependencies by patching OPA decisions locally and
+disabling audit.
+"""
+
 from __future__ import annotations
 
 import os
@@ -7,15 +12,30 @@ from unittest.mock import MagicMock
 
 os.environ.setdefault("PG_DSN", "dbname=casf user=casf password=casf host=localhost port=5432")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
-os.environ.setdefault("ANTI_REPLAY_ENABLED", "false")
-os.environ.setdefault("CASF_DISABLE_AUDIT", "1")
+os.environ.setdefault("OPA_URL", "http://localhost:8181")
+
+from importlib import reload
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from src.verifier.main import app
 from src.verifier.metrics import METRICS
+from src.verifier.opa_client import OpaDecision
 
-client = TestClient(app)
+
+def _get_client():
+    """Fresh app/client to avoid cross-test env/module contamination."""
+    os.environ["ANTI_REPLAY_ENABLED"] = "false"
+    os.environ["CASF_DISABLE_AUDIT"] = "1"
+
+    import src.verifier.settings as settings_mod
+
+    reload(settings_mod)
+    import src.verifier.main as main_mod
+
+    reload(main_mod)
+    return TestClient(main_mod.app), main_mod
+
 
 # Shared payloads
 _READ_PAYLOAD = {
@@ -41,12 +61,14 @@ _WRITE_DENIED_PAYLOAD = {
 
 
 def test_metrics_endpoint_returns_200():
+    client, _main = _get_client()
     r = client.get("/metrics")
     assert r.status_code == 200
     assert "text/plain" in r.headers["content-type"]
 
 
 def test_metrics_endpoint_contains_prometheus_format():
+    client, _main = _get_client()
     r = client.get("/metrics")
     body = r.text
     assert "# TYPE" in body
@@ -66,9 +88,16 @@ def test_metrics_no_duplicate_type_lines():
 
 def test_verify_increments_total_counter():
     METRICS.reset()
-    client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+    client, main_mod = _get_client()
+    with patch.object(
+        main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
+    ):
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
     assert METRICS.get("casf_verify_total") == 1
-    client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+    with patch.object(
+        main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
+    ):
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
     assert METRICS.get("casf_verify_total") == 2
 
 
@@ -77,7 +106,11 @@ def test_verify_increments_total_counter():
 
 def test_verify_allow_increments_decision_allow():
     METRICS.reset()
-    r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+    client, main_mod = _get_client()
+    with patch.object(
+        main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
+    ):
+        r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
     assert r.json()["decision"] == "ALLOW"
     assert METRICS.get("casf_verify_decision_total", labels={"decision": "ALLOW"}) == 1
     assert METRICS.get("casf_verify_decision_total", labels={"decision": "DENY"}) == 0
@@ -85,7 +118,13 @@ def test_verify_allow_increments_decision_allow():
 
 def test_verify_deny_increments_decision_deny():
     METRICS.reset()
-    r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **_WRITE_DENIED_PAYLOAD})
+    client, main_mod = _get_client()
+    with patch.object(
+        main_mod.opa,
+        "evaluate",
+        return_value=OpaDecision(allow=False, violations=["Mode_ReadOnly_NoWrite"]),
+    ):
+        r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **_WRITE_DENIED_PAYLOAD})
     assert r.json()["decision"] == "DENY"
     assert METRICS.get("casf_verify_decision_total", labels={"decision": "DENY"}) == 1
 
@@ -95,7 +134,11 @@ def test_verify_deny_increments_decision_deny():
 
 def test_verify_records_duration():
     METRICS.reset()
-    client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+    client, main_mod = _get_client()
+    with patch.object(
+        main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
+    ):
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
     output = METRICS.render()
     assert "casf_verify_duration_seconds_count" in output
     assert "casf_verify_duration_seconds_sum" in output
@@ -107,7 +150,11 @@ def test_verify_records_duration():
 
 def test_verify_in_flight_returns_to_zero():
     METRICS.reset()
-    client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+    client, main_mod = _get_client()
+    with patch.object(
+        main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
+    ):
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
     assert METRICS.gauge_get("casf_verify_in_flight") == 0
 
 
@@ -208,10 +255,10 @@ def test_metrics_render_counters():
     METRICS.inc("casf_verify_decision_total", labels={"decision": "ALLOW"})
 
     output = METRICS.render()
-    assert 'casf_verify_total 1' in output
+    assert "casf_verify_total 1" in output
     assert 'casf_verify_decision_total{decision="ALLOW"} 1' in output
-    assert '# TYPE casf_verify_total counter' in output
-    assert '# HELP casf_verify_total' in output
+    assert "# TYPE casf_verify_total counter" in output
+    assert "# HELP casf_verify_total" in output
 
 
 def test_metrics_render_gauge():

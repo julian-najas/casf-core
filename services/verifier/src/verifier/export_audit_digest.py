@@ -22,6 +22,7 @@ Exit codes:
   1 = chain broken (digest still emitted with chain_valid=false)
   2 = connectivity / unexpected error
 """
+
 from __future__ import annotations
 
 import hashlib
