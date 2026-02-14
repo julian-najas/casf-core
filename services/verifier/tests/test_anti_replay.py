@@ -2,74 +2,11 @@
 
 from __future__ import annotations
 
-import contextlib
-import os
 import uuid
 from unittest.mock import MagicMock, patch
 
+from helpers import FakeRedis, isolated_client
 from src.verifier.rate_limiter import RateLimiter
-
-# ── FakeRedis with Lua-script support ────────────────────
-
-
-class FakeRedis:
-    """Minimal stand-in for redis.Redis with SET NX / GET / XX KEEPTTL."""
-
-    def __init__(self) -> None:
-        self._store: dict[str, str] = {}
-
-    def set(
-        self,
-        key: str,
-        value: str,
-        *,
-        nx: bool = False,
-        ex: int | None = None,
-        xx: bool = False,
-        keepttl: bool = False,
-    ) -> bool | None:
-        if xx:
-            if key not in self._store:
-                return None
-            self._store[key] = value
-            return True
-        if nx and key in self._store:
-            return None  # SET NX fails
-        self._store[key] = value
-        return True
-
-    def get(self, key: str) -> bytes | None:
-        v = self._store.get(key)
-        return v.encode("utf-8") if v is not None else None
-
-    def register_script(self, script: str) -> MagicMock:
-        """Return a callable that simulates the Lua script via Python."""
-        redis_ref = self
-
-        if "INCR" in script:
-            # rate-limit script
-            def lua_incr(keys, args):
-                k = keys[0]
-                val = int(redis_ref._store.get(k, "0")) + 1
-                redis_ref._store[k] = str(val)
-                return val
-
-            return lua_incr
-
-        # replay-check script
-        def lua_replay(keys, args):
-            k = keys[0]
-            existing = redis_ref._store.get(k)
-            if existing is not None:
-                return existing.encode("utf-8")
-            redis_ref._store[k] = args[0]
-            return None
-
-        return lua_replay
-
-    @classmethod
-    def from_url(cls, _url: str, **_kw: object) -> FakeRedis:
-        return cls()
 
 
 def _make_rl() -> RateLimiter:
@@ -163,56 +100,9 @@ def test_pending_decision_returned_as_none():
 # ── Integration tests: /verify endpoint ──────────────────
 
 
-@contextlib.contextmanager
-def _isolated_client(**extra_env):
-    """
-    Create a TestClient with FakeRedis + isolated env.
-    On exit, restore os.environ and reload modules so later tests aren't poisoned.
-    """
-    env_overrides = {
-        "REDIS_URL": "redis://localhost:6379/0",
-        "CASF_DISABLE_AUDIT": "1",
-        "ANTI_REPLAY_ENABLED": "true",
-        **extra_env,
-    }
-    saved = {k: os.environ.get(k) for k in env_overrides}
-    os.environ.update(env_overrides)
-
-    try:
-        with patch("src.verifier.rate_limiter.redis.Redis.from_url", FakeRedis.from_url):
-            from importlib import reload
-
-            import src.verifier.settings as settings_mod
-
-            reload(settings_mod)
-            import src.verifier.main as main_mod
-
-            reload(main_mod)
-            from fastapi.testclient import TestClient
-
-            yield TestClient(main_mod.app), main_mod
-    finally:
-        # Restore env
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-
-        # Reload modules to clean state for subsequent tests
-        from importlib import reload
-
-        import src.verifier.settings as s
-
-        reload(s)
-        import src.verifier.main as m
-
-        reload(m)
-
-
 def test_verify_replay_returns_cached_decision():
     """Same request_id twice → 2nd returns same decision (200, idempotent)."""
-    with _isolated_client() as (client, _main_mod):
+    with isolated_client() as (client, _main_mod):
         rid = str(uuid.uuid4())
         payload = {
             "request_id": rid,
@@ -239,7 +129,7 @@ def test_verify_replay_returns_cached_decision():
 
 def test_verify_replay_mismatch_returns_deny():
     """Same request_id + different payload → DENY."""
-    with _isolated_client() as (client, _main_mod):
+    with isolated_client() as (client, _main_mod):
         rid = str(uuid.uuid4())
         payload1 = {
             "request_id": rid,
@@ -265,7 +155,7 @@ def test_verify_replay_mismatch_returns_deny():
 
 def test_verify_redis_down_write_tool_denies():
     """Redis unavailable + write tool → DENY (fail-closed)."""
-    with _isolated_client() as (client, main_mod):
+    with isolated_client() as (client, main_mod):
         # Break the replay check
         main_mod.rl._replay_script = MagicMock(side_effect=ConnectionError("redis down"))
 

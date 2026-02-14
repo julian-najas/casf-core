@@ -8,21 +8,9 @@ from __future__ import annotations
 
 import os
 import uuid
-from importlib import reload
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
-
-def _get_client():
-    """Get a fresh TestClient, reloading modules to avoid stale state."""
-    import src.verifier.settings as settings_mod
-
-    reload(settings_mod)
-    import src.verifier.main as main_mod
-
-    reload(main_mod)
-    return TestClient(main_mod.app), main_mod
+from helpers import get_client
 
 
 def test_audit_append_failure_denies_fail_closed():
@@ -37,7 +25,7 @@ def test_audit_append_failure_denies_fail_closed():
     os.environ.update(overrides)
 
     try:
-        client, main_mod = _get_client()
+        client, main_mod = get_client(anti_replay=False, disable_audit=False)
 
         payload = {
             "request_id": str(uuid.uuid4()),

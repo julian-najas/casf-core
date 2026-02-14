@@ -14,61 +14,25 @@ os.environ.setdefault("PG_DSN", "dbname=casf user=casf password=casf host=localh
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("OPA_URL", "http://localhost:8181")
 
-from importlib import reload
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
+from helpers import SAMPLE_READ_PAYLOAD, SAMPLE_WRITE_DENIED_PAYLOAD, get_client, isolated_client
 from src.verifier.metrics import METRICS
 from src.verifier.opa_client import OpaDecision
-
-
-def _get_client():
-    """Fresh app/client to avoid cross-test env/module contamination."""
-    os.environ["ANTI_REPLAY_ENABLED"] = "false"
-    os.environ["CASF_DISABLE_AUDIT"] = "1"
-
-    import src.verifier.settings as settings_mod
-
-    reload(settings_mod)
-    import src.verifier.main as main_mod
-
-    reload(main_mod)
-    return TestClient(main_mod.app), main_mod
-
-
-# Shared payloads
-_READ_PAYLOAD = {
-    "tool": "cliniccloud.list_appointments",
-    "mode": "READ_ONLY",
-    "role": "receptionist",
-    "subject": {"patient_id": "p1"},
-    "args": {},
-    "context": {"tenant_id": "t-demo"},
-}
-
-_WRITE_DENIED_PAYLOAD = {
-    "tool": "cliniccloud.create_appointment",
-    "mode": "READ_ONLY",
-    "role": "receptionist",
-    "subject": {"patient_id": "p1"},
-    "args": {},
-    "context": {"tenant_id": "t-demo"},
-}
 
 
 # ── /metrics endpoint ────────────────────────────────────
 
 
 def test_metrics_endpoint_returns_200():
-    client, _main = _get_client()
+    client, _main = get_client()
     r = client.get("/metrics")
     assert r.status_code == 200
     assert "text/plain" in r.headers["content-type"]
 
 
 def test_metrics_endpoint_contains_prometheus_format():
-    client, _main = _get_client()
+    client, _main = get_client()
     r = client.get("/metrics")
     body = r.text
     assert "# TYPE" in body
@@ -88,16 +52,16 @@ def test_metrics_no_duplicate_type_lines():
 
 def test_verify_increments_total_counter():
     METRICS.reset()
-    client, main_mod = _get_client()
+    client, main_mod = get_client()
     with patch.object(
         main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
     ):
-        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **SAMPLE_READ_PAYLOAD})
     assert METRICS.get("casf_verify_total") == 1
     with patch.object(
         main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
     ):
-        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **SAMPLE_READ_PAYLOAD})
     assert METRICS.get("casf_verify_total") == 2
 
 
@@ -106,11 +70,11 @@ def test_verify_increments_total_counter():
 
 def test_verify_allow_increments_decision_allow():
     METRICS.reset()
-    client, main_mod = _get_client()
+    client, main_mod = get_client()
     with patch.object(
         main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
     ):
-        r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+        r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **SAMPLE_READ_PAYLOAD})
     assert r.json()["decision"] == "ALLOW"
     assert METRICS.get("casf_verify_decision_total", labels={"decision": "ALLOW"}) == 1
     assert METRICS.get("casf_verify_decision_total", labels={"decision": "DENY"}) == 0
@@ -118,13 +82,13 @@ def test_verify_allow_increments_decision_allow():
 
 def test_verify_deny_increments_decision_deny():
     METRICS.reset()
-    client, main_mod = _get_client()
+    client, main_mod = get_client()
     with patch.object(
         main_mod.opa,
         "evaluate",
         return_value=OpaDecision(allow=False, violations=["Mode_ReadOnly_NoWrite"]),
     ):
-        r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **_WRITE_DENIED_PAYLOAD})
+        r = client.post("/verify", json={"request_id": str(uuid.uuid4()), **SAMPLE_WRITE_DENIED_PAYLOAD})
     assert r.json()["decision"] == "DENY"
     assert METRICS.get("casf_verify_decision_total", labels={"decision": "DENY"}) == 1
 
@@ -134,11 +98,11 @@ def test_verify_deny_increments_decision_deny():
 
 def test_verify_records_duration():
     METRICS.reset()
-    client, main_mod = _get_client()
+    client, main_mod = get_client()
     with patch.object(
         main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
     ):
-        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **SAMPLE_READ_PAYLOAD})
     output = METRICS.render()
     assert "casf_verify_duration_seconds_count" in output
     assert "casf_verify_duration_seconds_sum" in output
@@ -150,11 +114,11 @@ def test_verify_records_duration():
 
 def test_verify_in_flight_returns_to_zero():
     METRICS.reset()
-    client, main_mod = _get_client()
+    client, main_mod = get_client()
     with patch.object(
         main_mod.opa, "evaluate", return_value=OpaDecision(allow=True, violations=[])
     ):
-        client.post("/verify", json={"request_id": str(uuid.uuid4()), **_READ_PAYLOAD})
+        client.post("/verify", json={"request_id": str(uuid.uuid4()), **SAMPLE_READ_PAYLOAD})
     assert METRICS.gauge_get("casf_verify_in_flight") == 0
 
 
@@ -163,13 +127,11 @@ def test_verify_in_flight_returns_to_zero():
 
 def test_replay_hit_and_mismatch_counters():
     """Exercise replay via isolated client with FakeRedis."""
-    from tests.test_anti_replay import _isolated_client
-
     METRICS.reset()
     rid = str(uuid.uuid4())
-    payload = {"request_id": rid, **_READ_PAYLOAD}
+    payload = {"request_id": rid, **SAMPLE_READ_PAYLOAD}
 
-    with _isolated_client() as (iso_client, _):
+    with isolated_client() as (iso_client, _):
         # First request — new
         r1 = iso_client.post("/verify", json=payload)
         assert r1.json()["decision"] == "ALLOW"
@@ -191,10 +153,8 @@ def test_replay_hit_and_mismatch_counters():
 
 def test_fail_closed_redis_trigger():
     """Redis failure on write → fail_closed{trigger=redis}."""
-    from tests.test_anti_replay import _isolated_client
-
     METRICS.reset()
-    with _isolated_client() as (iso_client, main_mod):
+    with isolated_client() as (iso_client, main_mod):
         main_mod.rl._replay_script = MagicMock(side_effect=ConnectionError("redis down"))
         payload = {
             "request_id": str(uuid.uuid4()),
@@ -216,7 +176,6 @@ def test_fail_closed_redis_trigger():
 def test_opa_error_kind_label():
     """OPA timeout → opa_error_total{kind=timeout} + fail_closed{trigger=opa}."""
     from src.verifier.opa_client import OpaError
-    from tests.test_anti_replay import _isolated_client
 
     METRICS.reset()
 
@@ -225,7 +184,7 @@ def test_opa_error_kind_label():
 
     # Use isolated client so rate_limiter works (FakeRedis) — write tool that
     # doesn't hit SMS rate-limit so we actually reach the OPA path.
-    with _isolated_client(ANTI_REPLAY_ENABLED="false") as (iso_client, main_mod):
+    with isolated_client(ANTI_REPLAY_ENABLED="false") as (iso_client, main_mod):
         original = main_mod.opa.evaluate
         main_mod.opa.evaluate = raise_timeout
         try:

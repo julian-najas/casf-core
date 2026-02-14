@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Dockerfile multi-stage build** — separate `builder` and `runtime` stages;
+  runtime runs as non-root user `appuser` (UID 10001) with `HEALTHCHECK`.
+- **`.dockerignore`** — excludes tests, `.venv`, caches, IDE files, and `.git`
+  from the Docker build context, reducing image size and attack surface.
+
+### Changed
+- **Centralised test helpers** — extracted `FakeRedis`, `get_client`,
+  `isolated_client`, `make_request`, `make_response`, and shared payload
+  constants into `tests/helpers.py`; reduced `conftest.py` to `sys.path` setup
+  only. All 6 test files now import from `helpers` — zero duplication.
+
 ### Added
 - **Structured logging** — `structlog` JSON output with context-bound variables
   (`request_id`, `tool`, `role`, `mode`) propagated via `contextvars`. Log events:

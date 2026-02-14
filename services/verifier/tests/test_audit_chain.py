@@ -11,16 +11,13 @@ import uuid
 import psycopg2
 import pytest
 
+from helpers import make_request, make_response
 from src.verifier.audit import (
     append_audit_event,
     compute_hash,
     verify_chain,
 )
-from src.verifier.models import (
-    AuditEventV1,
-    VerifyRequestV1,
-    VerifyResponseV1,
-)
+from src.verifier.models import AuditEventV1
 
 PG_DSN = os.environ.get("PG_DSN", "dbname=casf user=casf password=casf host=localhost port=5432")
 
@@ -45,29 +42,9 @@ def clean_db():
     _clean_audit_table()
 
 
-def _mk_req(**overrides) -> VerifyRequestV1:
-    defaults = dict(
-        request_id=str(uuid.uuid4()),
-        tool="twilio.send_sms",
-        mode="ALLOW",
-        role="receptionist",
-        subject={"patient_id": "p1"},
-        args={"to": "+34600000000", "template_id": "t1"},
-        context={"tenant_id": "t-demo"},
-    )
-    defaults.update(overrides)
-    return VerifyRequestV1(**defaults)
-
-
-def _mk_res(**overrides) -> VerifyResponseV1:
-    defaults = dict(
-        decision="ALLOW",
-        violations=[],
-        allowed_outputs=[],
-        reason="OK",
-    )
-    defaults.update(overrides)
-    return VerifyResponseV1(**defaults)
+# Aliases for shorter call sites
+_mk_req = make_request
+_mk_res = make_response
 
 
 # ── Unit: compute_hash is deterministic ──────────────────
