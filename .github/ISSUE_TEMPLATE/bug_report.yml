@@ -1,0 +1,75 @@
+name: "\U0001F41B Bug Report"
+description: Report a bug in CASF Verifier
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+        Please fill in as much detail as possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behaviour.
+      placeholder: |
+        1. Send POST /verify with payload …
+        2. Observe response …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened. Include logs/traces if available.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: CASF version
+      description: "Output of `git describe --tags` or Docker image tag."
+      placeholder: "v0.13.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Verifier API
+        - OPA policies
+        - Audit chain
+        - Anti-replay / Rate limiter
+        - Metrics
+        - Docker / Deploy
+        - CI / CD
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Environment details, screenshots, config snippets, etc.

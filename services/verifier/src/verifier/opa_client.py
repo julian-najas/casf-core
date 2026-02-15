@@ -5,6 +5,8 @@ from typing import Any
 
 import httpx
 
+__all__ = ["OpaClient", "OpaDecision", "OpaError"]
+
 # ── Error classification ─────────────────────────────────
 
 

@@ -1,0 +1,52 @@
+name: "\U0001F680 Feature Request"
+description: Suggest an enhancement or new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem does this feature solve? Why is it needed?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the solution you'd like, including API changes if applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider?
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Verifier API
+        - OPA policies
+        - Audit chain
+        - Anti-replay / Rate limiter
+        - Metrics
+        - Docker / Deploy
+        - CI / CD
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, mockups, references, or prior art.

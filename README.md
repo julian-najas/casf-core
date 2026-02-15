@@ -1,6 +1,9 @@
 # casf-core
 
 [![CI](https://github.com/julian-najas/casf-core/actions/workflows/ci.yml/badge.svg)](https://github.com/julian-najas/casf-core/actions/workflows/ci.yml)
+[![mypy: strict](https://img.shields.io/badge/mypy-strict-blue.svg)](https://mypy.readthedocs.io/)
+[![code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://docs.astral.sh/ruff/)
+[![license: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
 Zero-trust verification gateway for PHI/PII automation.
 Validates intent (tool / role / mode) before any execution, enforces policy via OPA, applies rate limiting, and writes an append-only hash-chained audit trail.

@@ -8,7 +8,7 @@ import psycopg2
 import redis as redis_lib
 import structlog
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from .audit import append_audit_event
 from .logging import get_logger, setup_logging
@@ -32,13 +32,13 @@ app = FastAPI(title="CASF Verifier", version="0.1")
 
 
 @app.get("/health")
-def health():
+def health() -> dict[str, str]:
     """Liveness probe: process is alive."""
     return {"status": "ok"}
 
 
 @app.get("/healthz")
-def healthz():
+def healthz() -> dict[str, str | dict[str, str]]:
     """
     Readiness probe: all dependencies reachable and operational.
     Returns 200 only when Postgres, Redis AND OPA are healthy.
@@ -83,17 +83,15 @@ def healthz():
 
 
 @app.get("/metrics")
-def metrics():
+def metrics() -> PlainTextResponse:
     """Prometheus text exposition endpoint."""
-    from fastapi.responses import PlainTextResponse
-
     return PlainTextResponse(
         METRICS.render(), media_type="text/plain; version=0.0.4; charset=utf-8"
     )
 
 
 @app.post("/verify", response_model=VerifyResponseV1)
-def verify(req: VerifyRequestV1):
+def verify(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
     METRICS.inc("casf_verify_total")
     METRICS.gauge_inc("casf_verify_in_flight")
     try:

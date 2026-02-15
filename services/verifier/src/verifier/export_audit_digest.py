@@ -49,7 +49,7 @@ def _canonical_json(obj: object) -> str:
 # ── Main ─────────────────────────────────────────────────
 
 
-def export_digest(pg_dsn: str, date: str | None = None) -> dict:
+def export_digest(pg_dsn: str, date: str | None = None) -> dict[str, object]:
     """
     Build an audit digest for *date* (YYYY-MM-DD, defaults to yesterday).
 

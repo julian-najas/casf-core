@@ -17,6 +17,8 @@ import os
 
 import structlog
 
+__all__ = ["setup_logging", "get_logger"]
+
 
 def setup_logging() -> None:
     """Configure structlog + stdlib logging for JSON output."""

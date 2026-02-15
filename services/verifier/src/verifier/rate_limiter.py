@@ -3,8 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from typing import Any
 
 import redis
+
+__all__ = ["RateLimiter", "RateLimitResult", "ReplayCheckResult"]
 
 LUA_INCR_EXPIRE = """
 local current = redis.call('INCR', KEYS[1])
@@ -38,11 +41,11 @@ class RateLimitResult:
 @dataclass(frozen=True)
 class ReplayCheckResult:
     is_new: bool
-    cached_decision: dict | None = None
+    cached_decision: dict[str, Any] | None = None
     fingerprint_match: bool = True
 
 
-def _request_fingerprint(request_body: dict) -> str:
+def _request_fingerprint(request_body: dict[str, Any]) -> str:
     """SHA-256 of canonical request body (excluding request_id)."""
     body = {k: v for k, v in request_body.items() if k != "request_id"}
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -70,7 +73,7 @@ class RateLimiter:
     # ── Anti-replay (idempotency) ────────────────────────
 
     def check_replay(
-        self, request_id: str, request_body: dict, ttl_s: int = 86400
+        self, request_id: str, request_body: dict[str, Any], ttl_s: int = 86400
     ) -> ReplayCheckResult:
         """
         Idempotent anti-replay gate.
@@ -102,7 +105,7 @@ class RateLimiter:
         )
 
     def store_decision(
-        self, request_id: str, request_body: dict, decision: dict, ttl_s: int = 86400
+        self, request_id: str, request_body: dict[str, Any], decision: dict[str, Any], ttl_s: int = 86400
     ) -> None:
         """
         Update the replay key with the actual decision (after processing).

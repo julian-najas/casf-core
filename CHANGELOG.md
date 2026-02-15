@@ -18,8 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `isolated_client`, `make_request`, `make_response`, and shared payload
   constants into `tests/helpers.py`; reduced `conftest.py` to `sys.path` setup
   only. All 6 test files now import from `helpers` — zero duplication.
+- **mypy strict mode** — `pyproject.toml` enables `strict = true`;
+  all 11 source modules pass with zero errors. Added `py.typed` marker.
+- **`__all__` exports** — every public module declares `__all__` for explicit API surface.
 
 ### Added
+- **GitHub issue templates** — `bug_report.yml` and `feature_request.yml`
+  (YAML-based forms with component dropdown).
+- **PR template** — checklist covering tests, mypy, ruff, OPA, CHANGELOG, and secrets.
+- **README badges** — mypy strict, ruff code style, Apache-2.0 license.
 - **Structured logging** — `structlog` JSON output with context-bound variables
   (`request_id`, `tool`, `role`, `mode`) propagated via `contextvars`. Log events:
   `verify_start`, `verify_decision`, `replay_hit`, `replay_mismatch`,

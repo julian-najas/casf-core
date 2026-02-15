@@ -4,13 +4,16 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import psycopg2
 import psycopg2.extras
 
 from .models import AuditEventV1, VerifyRequestV1, VerifyResponseV1
 
-psycopg2.extras.register_uuid()
+__all__ = ["append_audit_event", "compute_hash", "verify_chain"]
+
+psycopg2.extras.register_uuid()  # type: ignore[no-untyped-call]
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -20,10 +23,10 @@ def _utc_now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def _canonical_json(obj) -> str:
+def _canonical_json(obj: object) -> str:
     """Stable JSON: sorted keys, compact separators, UTF-8."""
 
-    def _default(o):
+    def _default(o: object) -> str:
         if isinstance(o, uuid.UUID):
             return str(o)
         if isinstance(o, datetime):
@@ -55,7 +58,7 @@ def compute_hash(
     actor: str,
     action: str,
     decision: str,
-    payload: dict,
+    payload: dict[str, Any],
     prev_hash: str,
 ) -> str:
     """
@@ -104,7 +107,7 @@ def verify_chain(events: list[AuditEventV1]) -> tuple[bool, int | None]:
 # ── Persistence ──────────────────────────────────────────
 
 
-def _get_prev_hash(conn) -> str:
+def _get_prev_hash(conn: psycopg2.extensions.connection) -> str:
     """Fetch the hash of the last event (inside the same transaction / lock)."""
     with conn.cursor() as cur:
         cur.execute("SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1;")

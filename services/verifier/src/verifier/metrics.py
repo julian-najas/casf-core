@@ -18,7 +18,10 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Generator
 from contextlib import contextmanager
+
+__all__ = ["METRICS"]
 
 
 class _Metrics:
@@ -115,7 +118,7 @@ class _Metrics:
             sums[1] += 1
 
     @contextmanager
-    def timer(self, name: str, *, labels: dict[str, str] | None = None):
+    def timer(self, name: str, *, labels: dict[str, str] | None = None) -> Generator[None, None, None]:
         """Context manager that observes elapsed time into a histogram."""
         start = time.monotonic()
         try:
