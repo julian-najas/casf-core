@@ -25,24 +25,51 @@ logger = get_logger()
 rl = RateLimiter(REDIS_URL)
 opa = OpaClient(OPA_URL)
 
-app = FastAPI(title="CASF Verifier", version="0.1")
+app = FastAPI(
+    title="CASF Verifier",
+    version="0.1.0",
+    summary="Zero-trust verification gateway for PHI/PII automation.",
+    description=(
+        "Validates intent (tool / role / mode) before any execution, "
+        "enforces policy via OPA, applies rate limiting, and writes an "
+        "append-only hash-chained audit trail.\n\n"
+        "### Decision flow\n"
+        "1. Anti-replay idempotency gate (Redis)\n"
+        "2. Deterministic hard-invariant rules\n"
+        "3. OPA policy evaluation\n"
+        "4. Append-only audit record (Postgres hash-chain)\n"
+    ),
+    contact={"name": "CASF maintainers", "url": "https://github.com/julian-najas/casf-core"},
+    license_info={"name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
+    openapi_tags=[
+        {"name": "verify", "description": "Decision endpoint — ALLOW / DENY / NEEDS_APPROVAL"},
+        {"name": "health", "description": "Liveness and readiness probes"},
+        {"name": "observability", "description": "Prometheus metrics exposition"},
+    ],
+)
 
 
 # ── Healthchecks ─────────────────────────────────────────
 
 
-@app.get("/health")
+@app.get("/health", tags=["health"], operation_id="liveness")
 def health() -> dict[str, str]:
     """Liveness probe: process is alive."""
     return {"status": "ok"}
 
 
-@app.get("/healthz")
+@app.get(
+    "/healthz",
+    tags=["health"],
+    operation_id="readiness",
+    responses={503: {"description": "One or more dependencies unreachable"}},
+)
 def healthz() -> dict[str, str | dict[str, str]]:
     """
     Readiness probe: all dependencies reachable and operational.
-    Returns 200 only when Postgres, Redis AND OPA are healthy.
-    Any single failure → 503.
+
+    Returns **200** only when Postgres, Redis AND OPA are healthy.
+    Any single failure → **503**.
     """
     checks: dict[str, str] = {}
 
@@ -82,15 +109,23 @@ def healthz() -> dict[str, str | dict[str, str]]:
     return {"status": "ok", "checks": checks}
 
 
-@app.get("/metrics")
+@app.get("/metrics", tags=["observability"], operation_id="prometheus_metrics")
 def metrics() -> PlainTextResponse:
-    """Prometheus text exposition endpoint."""
+    """Prometheus text exposition endpoint (OpenMetrics format)."""
     return PlainTextResponse(
         METRICS.render(), media_type="text/plain; version=0.0.4; charset=utf-8"
     )
 
 
-@app.post("/verify", response_model=VerifyResponseV1)
+@app.post(
+    "/verify",
+    response_model=VerifyResponseV1,
+    tags=["verify"],
+    operation_id="verify_intent",
+    responses={
+        400: {"description": "Invalid request (e.g. missing patient_id)"},
+    },
+)
 def verify(req: VerifyRequestV1) -> VerifyResponseV1 | JSONResponse:
     METRICS.inc("casf_verify_total")
     METRICS.gauge_inc("casf_verify_in_flight")

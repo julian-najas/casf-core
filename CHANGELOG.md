@@ -24,8 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SMS_RATE_WINDOW_S`, and `SMS_RATE_TENANT_OVERRIDES` (JSON env var)
   replace the hard-coded 1 SMS / patient / hour. Redis key now namespaced
   by `tenant_id` (`sms:{tenant_id}:{patient_id}`).
+- **FastAPI metadata enriched** — full OpenAPI metadata (description, contact,
+  license, tags, operation IDs, response schemas) on every endpoint.
 
 ### Added
+- **OpenAPI schema export** — `scripts/export_openapi.py` exports the schema
+  to `contracts/openapi.json`; `make openapi` to generate, `make openapi-check`
+  as CI drift gate. Schema checked in CI (lint job).
+- **SDK client generation** — `make sdk` generates a Python SDK via
+  `openapi-python-client`; `docs/sdk-generation.md` covers TypeScript, Go,
+  Java, Kotlin, and C#.
+- **Performance benchmarks** — Locust test suite (`benchmarks/locustfile.py`)
+  with 4 weighted scenarios (read, write, deny, healthz); `make bench` target;
+  `docs/benchmarks.md` with baseline targets and CI integration guide.
 - **ADRs** — `docs/adr/001-deny-by-default.md`, `002-hash-chain-audit.md`,
   `003-fail-closed.md` documenting the three core architectural decisions.
 - **`__all__` exports** — every public module declares `__all__` for explicit API surface.

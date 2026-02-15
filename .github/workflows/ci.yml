@@ -35,6 +35,9 @@ jobs:
       - name: Mypy (type check)
         run: python -m mypy src/verifier/
 
+      - name: OpenAPI schema drift check
+        run: python ../../scripts/export_openapi.py --check
+
   test:
     name: Tests (pytest)
     runs-on: ubuntu-latest

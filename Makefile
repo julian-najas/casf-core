@@ -1,4 +1,4 @@
-.PHONY: help lint test opa-test up down smoke clean
+.PHONY: help lint test opa-test up down smoke clean openapi openapi-check sdk bench
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
 VERIFIER := services/verifier
@@ -66,4 +66,19 @@ clean: ## Remove caches and build artifacts
 fmt-check: ## Verify formatting (CI gate)
 	cd $(VERIFIER) && python -m ruff format --check src/ tests/
 
-check: lint fmt-check test opa-test ## Run all checks (lint + format + test + OPA)
+openapi: ## Export OpenAPI schema to contracts/openapi.json
+	python scripts/export_openapi.py
+
+openapi-check: ## Verify OpenAPI schema is up to date (CI gate)
+	python scripts/export_openapi.py --check
+
+sdk: openapi ## Generate Python SDK client from OpenAPI spec
+	openapi-python-client generate \
+		--path contracts/openapi.json \
+		--output-path sdk/python \
+		--overwrite
+
+bench: up ## Run Locust performance benchmarks (starts stack first)
+	cd benchmarks && locust --headless -u 20 -r 5 --run-time 30s -H http://localhost:8088
+
+check: lint fmt-check openapi-check test opa-test ## Run all checks (lint + format + openapi + test + OPA)

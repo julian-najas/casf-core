@@ -1,0 +1,398 @@
+{
+  "components": {
+    "schemas": {
+      "ContextV1": {
+        "additionalProperties": true,
+        "properties": {
+          "ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "tenant_id": {
+            "minLength": 1,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "tenant_id"
+        ],
+        "title": "ContextV1",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "SubjectV1": {
+        "additionalProperties": true,
+        "properties": {
+          "patient_id": {
+            "minLength": 1,
+            "title": "Patient Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "patient_id"
+        ],
+        "title": "SubjectV1",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyRequestV1": {
+        "properties": {
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "context": {
+            "$ref": "#/components/schemas/ContextV1"
+          },
+          "mode": {
+            "enum": [
+              "ALLOW",
+              "STEP_UP",
+              "READ_ONLY",
+              "KILL_SWITCH"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Idempotent request identifier (UUID).",
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "receptionist",
+              "nurse",
+              "doctor",
+              "billing",
+              "custodian",
+              "system"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SubjectV1"
+          },
+          "tool": {
+            "enum": [
+              "cliniccloud.create_appointment",
+              "cliniccloud.cancel_appointment",
+              "cliniccloud.list_appointments",
+              "cliniccloud.summary_history",
+              "twilio.send_sms",
+              "stripe.generate_invoice"
+            ],
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "tool",
+          "mode",
+          "role",
+          "subject",
+          "args",
+          "context"
+        ],
+        "title": "VerifyRequestV1",
+        "type": "object"
+      },
+      "VerifyResponseV1": {
+        "properties": {
+          "allowed_outputs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Outputs",
+            "type": "array"
+          },
+          "decision": {
+            "enum": [
+              "ALLOW",
+              "DENY",
+              "NEEDS_APPROVAL"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "violations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Violations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "VerifyResponseV1",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "CASF maintainers",
+      "url": "https://github.com/julian-najas/casf-core"
+    },
+    "description": "Validates intent (tool / role / mode) before any execution, enforces policy via OPA, applies rate limiting, and writes an append-only hash-chained audit trail.\n\n### Decision flow\n1. Anti-replay idempotency gate (Redis)\n2. Deterministic hard-invariant rules\n3. OPA policy evaluation\n4. Append-only audit record (Postgres hash-chain)\n",
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    },
+    "summary": "Zero-trust verification gateway for PHI/PII automation.",
+    "title": "CASF Verifier",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "Liveness probe: process is alive.",
+        "operationId": "liveness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Liveness",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "Readiness probe: all dependencies reachable and operational.\n\nReturns **200** only when Postgres, Redis AND OPA are healthy.\nAny single failure → **503**.",
+        "operationId": "readiness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "title": "Response Readiness",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "One or more dependencies unreachable"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "description": "Prometheus text exposition endpoint (OpenMetrics format).",
+        "operationId": "prometheus_metrics",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/verify": {
+      "post": {
+        "operationId": "verify_intent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequestV1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponseV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Invalid request (e.g. missing patient_id)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify",
+        "tags": [
+          "verify"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Decision endpoint — ALLOW / DENY / NEEDS_APPROVAL",
+      "name": "verify"
+    },
+    {
+      "description": "Liveness and readiness probes",
+      "name": "health"
+    },
+    {
+      "description": "Prometheus metrics exposition",
+      "name": "observability"
+    }
+  ]
+}
