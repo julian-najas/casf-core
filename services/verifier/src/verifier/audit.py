@@ -200,3 +200,5 @@ def append_audit_event(
     except Exception:
         conn.rollback()
         raise
+    finally:
+        conn.close()

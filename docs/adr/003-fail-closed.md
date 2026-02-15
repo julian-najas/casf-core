@@ -25,9 +25,9 @@ When any dependency is unavailable, the verifier must decide whether to
 
 | Failure              | Behaviour                                              | Metric label            |
 |----------------------|--------------------------------------------------------|-------------------------|
-| Redis unreachable    | Write tools → `DENY` + `FAIL_CLOSED`                  | `trigger="redis"`       |
-| OPA unreachable      | All tools → `DENY` + `FAIL_CLOSED`                    | `trigger="opa"`         |
-| OPA timeout          | All tools → `DENY` + `FAIL_CLOSED`                    | `trigger="opa"`         |
+| Redis unreachable    | Write tools → `DENY` + `FAIL_CLOSED`; reads pass through | `trigger="redis"`       |
+| OPA unreachable      | Write tools → `DENY` + `FAIL_CLOSED`; reads pass through (v1 pragmatic) | `trigger="opa"`         |
+| OPA timeout          | Write tools → `DENY` + `FAIL_CLOSED`; reads pass through (v1 pragmatic) | `trigger="opa"`         |
 | Postgres audit fail  | Decision flips to `DENY` + `FAIL_CLOSED` + `Audit_Unavailable` | `trigger="postgres"` |
 
 Each fail-closed event increments `casf_fail_closed_total{trigger=...}` so
@@ -42,7 +42,8 @@ operators can alert on infrastructure degradation before it blocks all traffic.
 
 ## Alternatives considered
 
-- **Fail open for reads**: considered — reads are safe, writes are not.
-  Rejected for v1 to keep the security posture uniform; may revisit in v2
-  with per-mode fail-open for `READ_ONLY` operations.
+- **Fail open for reads**: implemented in v1 as a pragmatic concession — read
+  operations (e.g. `list_appointments`) pass through when Redis or OPA are
+  unavailable, since they cannot mutate state. Write operations always fail
+  closed.
 - **Circuit breaker with cached decisions**: deferred to future version.

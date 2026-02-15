@@ -247,7 +247,7 @@
     },
     "summary": "Zero-trust verification gateway for PHI/PII automation.",
     "title": "CASF Verifier",
-    "version": "0.1.0"
+    "version": "0.13.0"
   },
   "openapi": "3.1.0",
   "paths": {

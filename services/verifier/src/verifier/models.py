@@ -19,6 +19,8 @@ __all__ = [
 ]
 
 Mode = Literal["ALLOW", "STEP_UP", "READ_ONLY", "KILL_SWITCH"]
+"""Operational mode.  ``STEP_UP`` and ``KILL_SWITCH`` are reserved for v2."""
+
 Role = Literal["receptionist", "nurse", "doctor", "billing", "custodian", "system"]
 Tool = Literal[
     "cliniccloud.create_appointment",
@@ -29,6 +31,7 @@ Tool = Literal[
     "stripe.generate_invoice",
 ]
 Decision = Literal["ALLOW", "DENY", "NEEDS_APPROVAL"]
+"""Verification outcome.  ``NEEDS_APPROVAL`` is reserved for v2 (human-in-the-loop)."""
 
 
 class SubjectV1(BaseModel):

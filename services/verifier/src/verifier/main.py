@@ -27,7 +27,7 @@ opa = OpaClient(OPA_URL)
 
 app = FastAPI(
     title="CASF Verifier",
-    version="0.1.0",
+    version="0.13.0",
     summary="Zero-trust verification gateway for PHI/PII automation.",
     description=(
         "Validates intent (tool / role / mode) before any execution, "

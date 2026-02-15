@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`conn.close()` in `audit.py`** — added `finally: conn.close()` to prevent
+  connection leaks when `commit()` or `rollback()` raises.
+- **ADR-003 accuracy** — fail-closed table now correctly reflects that reads
+  pass through on Redis/OPA failure (writes still fail closed).
+- **Version alignment** — `pyproject.toml` and OpenAPI schema now report
+  `0.13.0` (was `0.1.0`).
+
+### Changed
+- **`STEP_UP` / `NEEDS_APPROVAL` documented as reserved** — docstrings on
+  `Mode` and `Decision` type aliases clarify these are reserved for v2.
+
+## [0.13.0] - 2026-02-15
+
 ### Security
 - **Dockerfile multi-stage build** — separate `builder` and `runtime` stages;
   runtime runs as non-root user `appuser` (UID 10001) with `HEALTHCHECK`.
@@ -196,7 +210,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic `/health`, `/verify` endpoints.
 - 6 OPA policy tests.
 
-[Unreleased]: https://github.com/julian-najas/casf-core/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/julian-najas/casf-core/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/julian-najas/casf-core/compare/v0.12.0...v0.13.0
 [0.8.1]: https://github.com/julian-najas/casf-core/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/julian-najas/casf-core/compare/v0.7.0-freeze...v0.8.0
 [0.7.0]: https://github.com/julian-najas/casf-core/compare/v0.6-redis-rate-limit...v0.7.0-freeze
