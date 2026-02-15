@@ -16,7 +16,7 @@ def mk_req(*, request_id=None, tool="twilio.send_sms", patient_id="p1"):
         role="receptionist",
         subject=subject,
         args={"to": "+34600000000", "template_id": "t1"},
-        context={"tenant_id": "t-demo"},
+        context=SimpleNamespace(tenant_id="t-demo"),
     )
 
 

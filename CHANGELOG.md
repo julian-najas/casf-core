@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only. All 6 test files now import from `helpers` — zero duplication.
 - **mypy strict mode** — `pyproject.toml` enables `strict = true`;
   all 11 source modules pass with zero errors. Added `py.typed` marker.
+- **SMS rate-limit configurable per tenant** — `SMS_RATE_LIMIT`,
+  `SMS_RATE_WINDOW_S`, and `SMS_RATE_TENANT_OVERRIDES` (JSON env var)
+  replace the hard-coded 1 SMS / patient / hour. Redis key now namespaced
+  by `tenant_id` (`sms:{tenant_id}:{patient_id}`).
+
+### Added
+- **ADRs** — `docs/adr/001-deny-by-default.md`, `002-hash-chain-audit.md`,
+  `003-fail-closed.md` documenting the three core architectural decisions.
 - **`__all__` exports** — every public module declares `__all__` for explicit API surface.
 
 ### Added

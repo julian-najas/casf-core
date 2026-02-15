@@ -3,6 +3,7 @@ from __future__ import annotations
 from .metrics import METRICS
 from .models import VerifyRequestV1, VerifyResponseV1
 from .rate_limiter import RateLimiter
+from .settings import SMS_RATE_LIMIT, SMS_RATE_TENANT_OVERRIDES, SMS_RATE_WINDOW_S
 
 __all__ = ["WRITE_TOOLS", "READ_ONLY_ALLOWED", "is_write_tool", "apply_rules_v0"]
 
@@ -57,7 +58,7 @@ def apply_rules_v0(req: VerifyRequestV1, rl: RateLimiter | None = None) -> Verif
             reason="OK (READ_ONLY degraded output)",
         )
 
-    # SMS rate limit (v1): max 1 SMS / patient / hour
+    # SMS rate limit: configurable per tenant, defaults from settings
     if req.tool == "twilio.send_sms":
         if rl is None:
             return VerifyResponseV1(
@@ -66,9 +67,17 @@ def apply_rules_v0(req: VerifyRequestV1, rl: RateLimiter | None = None) -> Verif
                 allowed_outputs=[],
                 reason="Rate limiter not available",
             )
-        key = f"sms:{patient_id}"
+        tenant_id: str = (
+            req.context.get("tenant_id", "default")
+            if isinstance(req.context, dict)
+            else getattr(req.context, "tenant_id", "default")
+        )
+        tenant_cfg = SMS_RATE_TENANT_OVERRIDES.get(tenant_id, {})
+        limit = tenant_cfg.get("limit", SMS_RATE_LIMIT)
+        window_s = tenant_cfg.get("window_s", SMS_RATE_WINDOW_S)
+        key = f"sms:{tenant_id}:{patient_id}"
         try:
-            res_rl = rl.check(key=key, limit=1, window_s=3600)
+            res_rl = rl.check(key=key, limit=limit, window_s=window_s)
         except Exception:
             # Redis failure -> FAIL CLOSED for write
             return VerifyResponseV1(
