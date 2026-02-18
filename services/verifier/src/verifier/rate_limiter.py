@@ -60,6 +60,10 @@ class RateLimiter:
         self._script = self._r.register_script(LUA_INCR_EXPIRE)
         self._replay_script = self._r.register_script(LUA_REPLAY_CHECK)
 
+    def ping(self) -> bool:
+        """Redis PING — used by /healthz readiness probe."""
+        return self._r.ping()  # type: ignore[return-value]
+
     def check(self, key: str, limit: int, window_s: int) -> RateLimitResult:
         """
         Atomic counter with TTL.

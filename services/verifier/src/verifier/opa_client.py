@@ -28,6 +28,22 @@ class OpaClient:
     def __init__(self, opa_url: str, timeout_s: float = 0.35):
         self._url = opa_url.rstrip("/")
         self._timeout = timeout_s
+        self._client = httpx.Client(
+            timeout=self._timeout,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+
+    def health(self) -> bool:
+        """Lightweight health-check against OPA — used by /healthz."""
+        try:
+            r = self._client.post(
+                f"{self._url}/v1/data/casf/allow",
+                json={"input": {"tool": "healthcheck"}},
+            )
+            r.raise_for_status()
+            return True
+        except Exception:
+            return False
 
     def evaluate(self, input_doc: dict[str, Any]) -> OpaDecision:
         """
@@ -41,8 +57,7 @@ class OpaClient:
         payload = {"input": input_doc}
 
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                r = client.post(url, json=payload)
+            r = self._client.post(url, json=payload)
         except httpx.TimeoutException as exc:
             raise OpaError("timeout", f"OPA request timed out: {exc}") from exc
         except httpx.ConnectError as exc:

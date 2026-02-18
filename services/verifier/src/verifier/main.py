@@ -3,9 +3,7 @@ from __future__ import annotations
 import contextlib
 import os
 
-import httpx
 import psycopg2
-import redis as redis_lib
 import structlog
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -85,23 +83,16 @@ def healthz() -> dict[str, str | dict[str, str]]:
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"postgres: {e}") from None
 
-    # ── Redis ──
+    # ── Redis (reuse module-level RateLimiter client) ──
     try:
-        r = redis_lib.Redis.from_url(REDIS_URL, socket_timeout=2, socket_connect_timeout=2)
-        r.ping()
-        r.close()
+        rl.ping()
         checks["redis"] = "ok"
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"redis: {e}") from None
 
-    # ── OPA (policy evaluable, not just /health) ──
+    # ── OPA (reuse module-level OpaClient with connection pool) ──
     try:
-        with httpx.Client(timeout=2) as c:
-            resp = c.post(
-                f"{OPA_URL}/v1/data/casf/allow",
-                json={"input": {"tool": "healthcheck"}},
-            )
-            resp.raise_for_status()
+        opa.health()
         checks["opa"] = "ok"
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"opa: {e}") from None

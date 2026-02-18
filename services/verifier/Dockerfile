@@ -1,14 +1,15 @@
 # ── Build stage ──────────────────────────────────────────
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim@sha256:0b23cfb7425d065008b778022a17b1551c82f8b4866ee5a7a200084b7e2eafbf AS builder
 
 WORKDIR /build
-COPY pyproject.toml /build/pyproject.toml
-COPY src /build/src
+COPY requirements.lock pyproject.toml ./
+COPY src/ src/
 RUN pip install --no-cache-dir -U pip \
- && pip install --no-cache-dir --prefix=/install .
+ && pip install --no-cache-dir --require-hashes --no-deps -r requirements.lock --prefix=/install \
+ && pip install --no-cache-dir --no-deps --prefix=/install .
 
 # ── Runtime stage ────────────────────────────────────────
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim@sha256:0b23cfb7425d065008b778022a17b1551c82f8b4866ee5a7a200084b7e2eafbf AS runtime
 
 # Security: run as non-root
 RUN groupadd --gid 10001 appuser \

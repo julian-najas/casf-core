@@ -1,0 +1,104 @@
+name: supply-chain-policy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Policy Gate (Supply Chain)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            objects.githubusercontent.com:443
+            agent.api.stepsecurity.io:443
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Policy checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          echo "== 1) GitHub Actions must be pinned by SHA (no @vX) =="
+          if grep -RIn --exclude-dir=.git --exclude='*.md' \
+            -E '^\s*uses:\s+[^#]+@v[0-9]+' .github/workflows | grep -v 'policy:ignore@v' ; then
+            fail "Found Actions using @vX tags. Pin uses: ...@<40-hex-sha>."
+          fi
+
+          if grep -RIn --exclude-dir=.git --exclude='*.md' \
+            -E '^\s*uses:\s+[^#]+@(main|master|HEAD)\b' .github/workflows | grep -v 'policy:ignore@ref' ; then
+            fail "Found Actions using floating refs (@main/@master/@HEAD). Pin by SHA."
+          fi
+
+          echo "== 2) Docker base images must be pinned by digest (FROM ...@sha256:...) =="
+          dockerfiles=$(git ls-files | grep -E '(^|/)(Dockerfile(\..*)?)$' || true)
+          if [[ -n "${dockerfiles}" ]]; then
+            while IFS= read -r f; do
+              if grep -nE '^\s*FROM\s+[^#]+$' "$f" | grep -v '@sha256:' | grep -v 'policy:ignore@digest' ; then
+                echo "::error file=$f::Base image not pinned by digest. Use FROM image:tag@sha256:... (or add # policy:ignore@digest)."
+                exit 1
+              fi
+            done <<< "${dockerfiles}"
+          else
+            echo "No Dockerfiles detected. Skipping digest gate."
+          fi
+
+          echo "== 3) Python lockfiles must contain hashes (pip --require-hashes compatible) =="
+          lockfiles=$(git ls-files | grep -E 'requirements(-dev)?\.lock$' || true)
+          if [[ -n "${lockfiles}" ]]; then
+            while IFS= read -r f; do
+              if grep -q 'policy:ignore@hashes' "$f"; then
+                echo "Skip hashes check for $f (policy:ignore@hashes)."
+                continue
+              fi
+              if ! grep -qE '(^|\s)--hash=sha256:' "$f"; then
+                echo "::error file=$f::Lockfile has no --hash=sha256 entries. Regenerate with pip-compile --generate-hashes."
+                exit 1
+              fi
+            done <<< "${lockfiles}"
+          else
+            echo "No requirements*.lock detected. Skipping hashes gate."
+          fi
+
+          echo "== 4) Prod secrets must not be referenced in pull_request workflows =="
+          PROD_MARKERS_REGEX='(HMAC_KEY_PROD|PROD_[A-Z0-9_]*|AWS_SECRET_ACCESS_KEY|AZURE_CLIENT_SECRET|GCP_SA_KEY|KUBE_CONFIG|DOCKERHUB_TOKEN|GHCR_TOKEN)'
+          pr_wfs=$(grep -RIl --exclude-dir=.git --exclude='supply-chain-policy.yml' 'pull_request:' .github/workflows || true)
+          if [[ -n "${pr_wfs}" ]]; then
+            while IFS= read -r wf; do
+              if grep -nE "${PROD_MARKERS_REGEX}" "$wf" | grep -v 'policy:ignore@prodsecret' ; then
+                echo "::error file=$wf::Prod secret marker referenced in pull_request workflow. Move to push/main or environment-protected job."
+                exit 1
+              fi
+            done <<< "${pr_wfs}"
+          fi
+
+          echo "== 5) No unverified remote execution patterns =="
+          if grep -RIn --exclude-dir=.git --exclude='*.md' --exclude='supply-chain-policy.yml' \
+            -E 'curl[^|]*\|\s*(bash|sh)\b' .github/workflows | grep -v 'policy:ignore@curlpipe' ; then
+            fail "Found unverified curl-pipe pattern. Pin the action or verify with checksum."
+          fi
+
+          curl_tar_hits=$(grep -RIn --exclude-dir=.git --exclude='*.md' --exclude='supply-chain-policy.yml' \
+            -E 'curl[^|]*\|\s*tar\b' .github/workflows | grep -v 'policy:ignore@curlpipe' || true)
+          if [[ -n "${curl_tar_hits}" ]]; then
+            echo "$curl_tar_hits"
+            echo "::error::Found unverified curl-to-tar pattern. Verify with checksum or use a pinned action."
+            exit 1
+          fi
+
+          echo "All policy checks passed."
